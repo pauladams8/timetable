@@ -6,9 +6,6 @@ import pickle
 import json
 import re
 import os
-import subprocess
-import sys
-import shlex
 import dateparser
 from http import cookiejar
 from typing import List, Callable
@@ -44,7 +41,7 @@ class Lesson():
 # FireflyClient maintains Firefly session state.
 class FireflyClient():
     # __init__ creates a new Firefly client. 
-    def __init__(self, url: str, username: str, password: str):
+    def __init__(self, url: str, username: str, password: str, storage_path: Path):
         self.base_url = url
         self.username = username
         self.password = password
@@ -56,11 +53,7 @@ class FireflyClient():
             'Accept-Language': 'en-GB,en;q=0.9'
         })
         self._attempts = 0
-        self._path = Path.home().joinpath('.ff-timetable')
-        self._cookie_path = self._path.joinpath('cookies')
-
-        if not self._path.is_dir():
-            self._path.mkdir()
+        self._cookie_path = storage_path.joinpath('cookies')
 
         if self._cookie_path.is_file():
             cookies = pickle.load(self._cookie_path.open('rb'))
@@ -212,7 +205,7 @@ class FireflyClient():
 
     # login requests a session cookie from Firefly and saves it to a file so we don't have to login again until it expires.
     def login(self):
-        self._old_spinner_text = self.spinner.text
+        old_spinner_text = self.spinner.text
         self.spinner.text = 'Logging in'
 
         response = self._get('/login/login.aspx')
@@ -234,16 +227,15 @@ class FireflyClient():
 
         pickle.dump(self._client.cookies, cookie_file)
 
-        self.spinner.text = self._old_spinner_text
-        self._old_spinner_text = None
+        self.spinner.text = old_spinner_text
 
 # header_str pretty prints a dictionary of headers.
 # This function is for debugging purposes. You probably won't need to use it.
 def header_str(headers: dict):
     return '\n'.join([k + ': ' + (', '.join(v) if isinstance(v, list) else v) for (k, v) in headers])
 
-# create_client creates a new FireflyClient with the configured URL and credentials.
-def create_client():
+# create_client creates a new FireflyClient for a storage path.
+def create_client(storage_path: Path):
     config = get_config()
     sections = config.sections()
 
@@ -261,7 +253,7 @@ def create_client():
     username = host_config['Username']
     password = host_config['Password']
 
-    return FireflyClient(protocol + '://' + hostname, username, password)
+    return FireflyClient(protocol + '://' + hostname, username, password, storage_path)
 
 # get_config retrieves a config value for a key if one is supplied, or the config object.
 def get_config(key: str = None):
@@ -300,9 +292,13 @@ def print_timetable(client: FireflyClient, date: date):
             if value is not None:
                 print(' ' * padding + value)
 
+# Create the storage directory is it doesn't exist
+if not PATH.is_dir():
+    PATH.mkdir()
+
 colorinit()
 
-client = create_client()
+client = create_client(PATH)
 
 date_input = input('Date (leave blank for today): ')
 
