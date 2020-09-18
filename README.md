@@ -6,6 +6,7 @@ This script retrieves your timetable from Firefly.
 
 ## Requirements
 - Python 3.4 or higher
+- Python dependencies listed in `requirements.txt` (`pip install -r requirements.txt`)
 
 ## Usage
 1. You'll need to create a `timetable.conf` within a directory named `ff-timetable` in your home directory.
