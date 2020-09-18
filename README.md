@@ -5,6 +5,7 @@ This script retrieves your timetable from Firefly.
 [![asciicast](https://asciinema.org/a/qwucsSXemoLbaCgvBsIu7p4VI.svg)](https://asciinema.org/a/qwucsSXemoLbaCgvBsIu7p4VI)
 
 ## Requirements
+- libxml2 and libxlst
 - Python 3.4 or higher
 - Python dependencies listed in `requirements.txt` (`pip install -r requirements.txt`)
 
