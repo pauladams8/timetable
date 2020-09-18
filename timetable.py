@@ -284,13 +284,27 @@ def print_timetable(client: FireflyClient, date: date):
 
         print(Style.DIM + time_period + Style.RESET_ALL, Style.BRIGHT + lesson.subject + Style.RESET_ALL)
 
-        padding = len(time_period) + 1
+        padding = ' ' * (len(time_period) + 1)
 
         for key in ['teacher', 'room']:
             value = getattr(lesson, key, None)
 
             if value is not None:
-                print(' ' * padding + value)
+                print(padding + value)
+
+def get_date():
+    date_input = input('Date (leave blank for today): ')
+
+    if date_input:
+        parsed_time = dateparser.parse(date_input)
+
+        if parsed_time:
+            return parsed_time.date()
+        else:
+            print("Couldn't parse the date `{}`. Perhaps try rephrasing it?".format(date_input))
+            return get_date()
+    else:
+        return date.today()
 
 # Create the storage directory is it doesn't exist
 if not PATH.is_dir():
@@ -300,16 +314,4 @@ colorinit()
 
 client = create_client(PATH)
 
-date_input = input('Date (leave blank for today): ')
-
-if date_input:
-    parsed_time = dateparser.parse(date_input)
-
-    if parsed_time:
-        date = parsed_time.date()
-    else:
-        raise Exception("Couldn't parse the date `{}`. Perhaps try rephrasing it?".format(date_input))
-else:
-    date = date.today()
-
-print_timetable(client, date)
+print_timetable(client, get_date())
