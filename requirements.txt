@@ -1,4 +1,4 @@
-bs4==0.0.1
+beautifulsoup4==4.9.1
 colorama==0.4.3
 dateparser==0.7.6
 lxml==4.5.2
