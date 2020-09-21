@@ -1,0 +1,72 @@
+#!/usr/bin/env python3
+
+# Copyright Paul Adams, 2020. All rights reserved.
+# Unauthorised reproduction is prohibited.
+
+import sys
+import config
+import formatter
+import dateparser
+from pathlib import Path
+from typing import List, Dict, Callable
+from argparse import ArgumentParser
+from configparser import ConfigParser
+from colorama import Style, init as colorinit
+from datetime import time as Time, date as Date
+from firefly import FireflyClient, Lesson, Task, TaskSortColumn, SortOrder
+from commands import Command, GetTimetable, GetTasks
+
+# header_str pretty prints a dictionary of headers.
+# This function is for debugging purposes. You probably won't need to use it.
+def header_str(headers: dict):
+    return '\n'.join([k + ': ' + (', '.join(v) if isinstance(v, list) else v) for (k, v) in headers])
+
+
+# get_date attempts to parse the date from stdin, defaulting to today.
+def get_date():
+    date_input = input('Date (leave blank for today): ')
+
+    if date_input:
+        parsed_time = dateparser.parse(date_input)
+
+        if parsed_time:
+            return parsed_time.date()
+        else:
+            print("Couldn't parse the date `{}`. Perhaps try rephrasing it?".format(date_input))
+            return get_date()
+    else:
+        return Date.today()
+
+# Create the storage directory is it doesn't exist
+if not config.PATH.is_dir():
+    config.PATH.mkdir()
+
+colorinit()
+
+commands: Dict[str, Command] = {
+    'tasks': GetTasks(),
+    'timetable': GetTimetable()
+}
+
+parser = ArgumentParser(
+    description='Retrieve your timetable, tasks and more from Firefly',
+    epilog='Copyright %s, %d. All rights reserved.' % (config.AUTHOR, Date.today().year),
+    formatter_class=formatter.HelpFormatter
+)
+parser.add_argument('-n', '--no-interaction', help='Prevent the program from requesting input via stdin', action='store_true')
+
+subparsers = parser.add_subparsers(dest='command', help='For help with a specific command, use %(prog)s [COMMAND] --help')
+
+for name, command in commands.items():
+    subparser = subparsers.add_parser(name=name, prog=parser.prog, description=command.description)
+    command.register_arguments(subparser)
+
+args = parser.parse_args()
+
+command_name = getattr(args, 'command', None)
+
+if command_name:
+    command = commands.get(command_name)
+    command.execute(args)
+else:
+    parser.print_help()
