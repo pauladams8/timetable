@@ -5,7 +5,6 @@
 
 import sys
 import config
-import formatter
 import dateparser
 from pathlib import Path
 from typing import List, Dict, Callable
@@ -51,7 +50,6 @@ commands: Dict[str, Command] = {
 parser = ArgumentParser(
     description='Retrieve your timetable, tasks and more from Firefly',
     epilog='Copyright %s, %d. All rights reserved.' % (config.AUTHOR, Date.today().year),
-    formatter_class=formatter.HelpFormatter
 )
 parser.add_argument('-n', '--no-interaction', help='Prevent the program from requesting input via stdin', action='store_true')
 
