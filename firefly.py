@@ -3,17 +3,19 @@
 
 import re
 import os
+import sys ### REMOVE ME ###
 import json
 import pickle
 import requests
 from abc import ABC
 from enum import Enum
 from pathlib import Path
+from http import HTTPStatus
 from bs4 import BeautifulSoup
 from colorama import Fore, Style
-from typing import List, Callable
 from yaspin import yaspin as Yaspin
 from argparse import ArgumentParser
+from typing import List, Dict, Callable
 from http import cookiejar as CookieJar
 from dateutil import parser as timeparser
 from datetime import date as Date, time as Time, datetime as DateTime, timedelta
@@ -97,6 +99,14 @@ class Task():
         self.is_resubmission_required = is_resubmission_required
         self.last_marked_as_done_by = last_marked_as_done_by
 
+    # Determine if the task is overdue
+    def is_overdue(self):
+        return self.due_date < Date.today()
+
+    # Determine if the task is due soon
+    def is_due_soon(self):
+        return self.due_date - Date.today() < timedelta(days=3)
+
 # TaskFilterEnum is an abstract enum for filtering tasks.
 class TaskFilterEnum(Enum):
     ALL = 'All'
@@ -119,18 +129,26 @@ class TaskMarkingStatus(Enum):
     MARKED = 'OnlyMarked'
     UNMARKED = 'OnlyUnmarked'
 
-# SortOrder is an enum for sort orders.
-class SortOrder(Enum):
+# SortDirection is an enum for sort orders.
+class SortDirection(Enum):
     ASCENDING = 'Ascending'
     DESCENDING = 'Descending'
 
+# SortColumn is an abstract enum for sort columns
+class SortColumn(Enum):
+    pass
+
 # TaskSortColumn is an enum for columns used to sort tasks.
-class TaskSortColumn(Enum):
+class TaskSortColumn(SortColumn):
     SET_DATE = 'SetDate'
     DUE_DATE = 'DueDate'
 
 # FireflyClient maintains Firefly session state.
 class FireflyClient():
+    # MIME type constants
+    MIME_TYPE_HTML = 'text/html'
+    MIME_TYPE_JSON = 'application/json'
+
     # __init__ creates a new Firefly client. 
     def __init__(self, url: str, username: str, password: str, storage_path: Path):
         self.base_url = url
@@ -140,7 +158,7 @@ class FireflyClient():
         self._client = requests.Session()
         self._client.headers.update({
             'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.102 Safari/537.36',
-            'Accept': 'text/html',
+            'Accept': self.MIME_TYPE_HTML # Can be overriden on a method basis
         })
         self._attempts = 0
         self._cookie_path = storage_path.joinpath('cookies')
@@ -157,7 +175,7 @@ class FireflyClient():
         response = self._client.request(method, url, **kwargs)
 
         # Determine if we need to login
-        if response.url != url and 'login.aspx' in response.url:
+        if response.status_code == HTTPStatus.UNAUTHORIZED or response.url != url and 'login.aspx' in response.url:
             if self._attempts > 1:
                 raise Exception('Unable to authenticate with Firefly')
 
@@ -168,10 +186,15 @@ class FireflyClient():
             # Try again
             return self._request(method, endpoint, **kwargs)
 
-        if 'text/html' not in response.headers['Content-Type']:
-            raise Exception('Response content type must be HTML')
+        expected_type = response.request.headers['Accept']
 
-        response.parser = BeautifulSoup(response.text, 'lxml')
+        # Validate the content type against what we requested
+        if expected_type not in response.headers['Content-Type']:
+            raise Exception('Response content type must be ' + expected_type)
+
+        if expected_type == self.MIME_TYPE_HTML:
+            # Create a parser instance on the response for parsing HTML
+            response.parser = BeautifulSoup(response.text, 'lxml')
 
         return response
 
@@ -266,6 +289,9 @@ class FireflyClient():
 
         return lessons
 
+    def get_lessons_by_week(self, start: Date) -> Dict[Date, List[Lesson]]:
+        pass
+
     # get_teachers searches the staff directory by surname.
     def get_teachers(self, surname: str) -> List[Teacher]:
         response = self._get('/school-directory', params={
@@ -310,7 +336,7 @@ class FireflyClient():
             setters: List[User] = None,
             addressees: List[Addressee] = None,
             sort_col: TaskSortColumn = TaskSortColumn.DUE_DATE,
-            sort_order: SortOrder = SortOrder.DESCENDING,
+            sort_direction: SortDirection = SortDirection.ASCENDING,
             offset: int = 0,
             limit: int = 10
         ) -> (List[Task], int):
@@ -318,16 +344,16 @@ class FireflyClient():
 
         params = {
             'ownerType': 'OnlySetters',
-            'archiveStatus': TaskFilterEnum.ALL,
-            'completionStatus': completion_status,
-            'markingStatus': marking_status,
-            'readStatus': read_status,
+            'archiveStatus': TaskFilterEnum.ALL.value,
+            'completionStatus': completion_status.value,
+            'markingStatus': marking_status.value,
+            'readStatus': read_status.value,
             'page': offset,
             'pageSize': limit,
             'sortingCriteria': [
                 {
-                    'column': sort_col,
-                    'order': sort_order
+                    'column': sort_col.value,
+                    'order': sort_direction.value
                 }
             ]
         }
@@ -343,58 +369,82 @@ class FireflyClient():
         if addressees:
             params['addressees'] = [addressee.guid for addressee in addressees]
 
-        response = self._post('/api/v2/taskListing/view/self/tasks/filterBy', json=params)
-        
+        # sys.exit(params)
+
+        response = self._post('/api/v2/taskListing/view/self/tasks/filterBy', json=params, headers={
+            'Accept': self.MIME_TYPE_JSON,
+            'Referer': 'https://firefly.kgs.org.uk/set-tasks'
+        })
+
+        # sys.exit(response.text)
+
         body = response.json()
 
-        tasks = []
+        tasks: List = []
 
-        user_decoder = Callable[[dict, str], User] = lambda user_dict, user_cls = User: user_cls(
-            user_dict['guid'],
-            user_dict['name'],
+        # Helper lambdas for parsing response params
+        def date_parser(date_str: str) -> Date:
+            if not date_str:
+                return date_str
+
+            time = DateTime.strptime(date_str, '%Y-%m-%d')
+
+            if isinstance(time, DateTime):
+                return time.date()
+
+            return time
+
+        user_decoder: Callable[[Dict, str], User] = lambda user_dict, user_cls = User: user_cls(
+            user_dict.get('guid'),
+            user_dict.get('name'),
             user_dict.get('deleted', False),
-            user_dict.get('sortKey', None)
+            user_dict.get('sortKey')
         )
 
         for task_dict in body['items']:
-            addressees = []
+            addressees: List = []
 
             for addresee_dict in task_dict['addressees']:
-                if addresee_dict['isGroup']:
+                if addresee_dict.get('isGroup'):
                     addresee_cls = Class
                 else:
                     addresee_cls = Student
 
                 addressees.append(addresee_cls(
-                    addresee_dict['guid'],
-                    addresee_dict['name']
+                    addresee_dict.get('guid'),
+                    addresee_dict.get('name')
                 ))
 
-            date_parser: Callable[[str], Date] = lambda date_str: DateTime.strptime(date_str, '%Y-%m-%d').date()
+            last_marked_as_done_by: Dict = task_dict.get('lastMarkedAsDoneBy')
 
-            tasks.append(Task(
-                task_dict['id'],
-                task_dict['title'],
-                addressees,
-                user_decoder(task_dict['setter'], Student if task_dict['isPersonalTask'] else User),
-                date_parser(task_dict['setDate']),
-                date_parser(task_dict['dueDate']),
-                task_dict['isDone'],
-                not task_dict['isUnread'],
-                task_dict['archived'],
-                task_dict['descriptionContainsQuestions'],
-                task_dict['fileSubmissionRequired'],
-                task_dict['hasFileSubmission'],
-                task_dict['isExcused'],
-                task_dict['isPersonalTask'],
-                task_dict['isResubmissionRequired'],
-                user_decoder(task_dict['lastMarkedAsDoneBy'])
-            ))
+            if last_marked_as_done_by:
+                last_marked_as_done_by: User = user_decoder(last_marked_as_done_by)
+
+            tasks.append(
+                Task(
+                    id=task_dict.get('id'),
+                    title=task_dict.get('title'),
+                    addressees=addressees,
+                    setter=user_decoder(task_dict['setter'], Student if task_dict['isPersonalTask'] else User),
+                    set_date=date_parser(task_dict['setDate']),
+                    due_date=date_parser(task_dict['dueDate']),
+                    is_done=task_dict.get('isDone'),
+                    is_read=task_dict.get('isUnread'),
+                    is_archived=task_dict.get('archived'),
+                    description_contains_questions=task_dict.get('descriptionContainsQuestions'),
+                    file_submission_required=task_dict.get('fileSubmissionRequired'),
+                    has_file_submission=task_dict.get('hasFileSubmission'),
+                    is_excused=task_dict.get('isExcused'),
+                    is_personal_task=task_dict.get('isPersonalTask'),
+                    is_resubmission_required=task_dict.get('isResubmissionRequired'),
+                    last_marked_as_done_by=last_marked_as_done_by
+                )
+            )
 
         self.spinner.text = 'Retrieved tasks'
         self.spinner.ok('✔️')
 
-        return tasks, body['totalCount']
+        return tasks, body.get('totalCount')
 
     # login requests a session cookie from Firefly and saves it to a file so we don't have to login again until it expires.
     def login(self):
@@ -403,8 +453,7 @@ class FireflyClient():
 
         response = self._get('/login/login.aspx')
 
-        form = response.parser.select_one(
-            'body > div.ff-login-box > div.ff-login-mainsection > form')
+        form = response.parser.select_one('body > div.ff-login-box > div.ff-login-mainsection > form')
 
         self._post('/login/' + form['action'], data={
             'username': self.username,
