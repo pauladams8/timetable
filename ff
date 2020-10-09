@@ -7,13 +7,13 @@ import sys
 import config
 import dateparser
 from pathlib import Path
-from typing import List, Dict, Callable
 from argparse import ArgumentParser
 from configparser import ConfigParser
+from typing import List, Dict, Callable
 from colorama import Style, init as colorinit
 from datetime import time as Time, date as Date
-from firefly import FireflyClient, Lesson, Task, TaskSortColumn, SortOrder
-from commands import Command, GetTimetable, GetTasks
+from commands import Command, GetTimetable, Tasks
+from firefly import FireflyClient, Lesson, Task, TaskSortColumn, SortDirection
 
 # header_str pretty prints a dictionary of headers.
 # This function is for debugging purposes. You probably won't need to use it.
@@ -43,8 +43,8 @@ if not config.PATH.is_dir():
 colorinit()
 
 commands: Dict[str, Command] = {
-    'tasks': GetTasks(),
-    'timetable': GetTimetable()
+    'tasks': Tasks,
+    'timetable': GetTimetable
 }
 
 parser = ArgumentParser(
@@ -59,12 +59,15 @@ for name, command in commands.items():
     subparser = subparsers.add_parser(name=name, prog=parser.prog, description=command.description)
     command.register_arguments(subparser)
 
-args = parser.parse_args()
+try:
+    args = parser.parse_args()
+except ValueError as e:
+    sys.exit(e)
 
 command_name = getattr(args, 'command', None)
 
 if command_name:
-    command = commands.get(command_name)
+    command = commands[command_name]()
     command.execute(args)
 else:
     parser.print_help()
