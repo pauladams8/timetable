@@ -1,8 +1,7 @@
 import config
+from typing import Callable
 from firefly import FireflyClient
 from configparser import ConfigParser
-
-_config_parser: ConfigParser = None
 
 # config_parser creates a new configparser.ConfigParser
 def config_parser():
