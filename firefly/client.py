@@ -169,10 +169,6 @@ class Client():
 
         return lessons
 
-    # Get the lessons for a given week
-    def get_lessons_by_week(self, start: Date) -> Dict[Date, List[Lesson]]:
-        pass
-
     # Search the staff directory by surname.
     def get_teachers(self, surname: str) -> List[Teacher]:
         response = self._get('/school-directory', params={
