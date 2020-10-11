@@ -17,10 +17,6 @@ class GetTasks(Command):
     # Register the command arguments
     @classmethod
     def register_arguments(self, parser: ArgumentParser):
-        # Sub commands
-        subparsers = parser.add_subparsers()
-        subparsers.add_parser('')
-
         completion_status_group = parser.add_mutually_exclusive_group()
         completion_status_group.add_argument('--todo', dest='completion_status', action='store_const', const=TaskCompletionStatus.TO_DO, help='Tasks that are yet to be completed')
         completion_status_group.add_argument('--done', dest='completion_status', action='store_const', const=TaskCompletionStatus.DONE, help='Tasks that are done')

@@ -7,7 +7,7 @@ from aenum import AutoNumberEnum
 class Enum(AutoNumberEnum):
     # Create an instance
     def __init__(self, foreign_name: str, human_name: str = None):
-        # Name used by API
+        # Name used by server
         self.foreign_name: str = foreign_name
         # Human readable name for lookups
         self._human_name: str = human_name
@@ -70,3 +70,16 @@ class TaskSortColumn(Enum):
 class TimetablePeriod(Enum):
     DAY = 'day'
     WEEK = 'week'
+
+# Enum for the task owner
+class TaskOwner(Enum):
+    SETTER = 'OnlySetters'
+
+# Enum for a task response event
+class TaskEvent(Enum):
+    DONE = 'mark-as-done'
+    UNDONE = 'mark-as-undone'
+
+# Enum for a task recipient
+class Recipient(Enum):
+    USER = 'user'

@@ -21,9 +21,9 @@ class GetTimetable(Command):
 
     # Execute the command
     def execute(self, args: Arguments):
-        self.firefly_client.spinner.start()
+        # self.firefly_client.spinner.start()
         lessons = self.firefly_client.get_lessons(args.date, TimetablePeriod.DAY)
-        self.firefly_client.spinner.stop()
+        # self.firefly_client.spinner.stop()
 
         self._print_timetable(lessons)
 

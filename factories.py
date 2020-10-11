@@ -31,9 +31,11 @@ def firefly_client():
 
         return value
 
-    hostname = get_config('hostname')
-    protocol = get_config('protocol', 'https')
-    username = get_config('username')
-    password = get_config('password')
+    url: str = get_config('protocol', 'https') + '://' + get_config('hostname')
 
-    return Client(protocol + '://' + hostname, username, password, config.PATH)
+    return Client(
+        url=url,
+        username=get_config('username'),
+        password=get_config('password'),
+        storage_path=config.PATH
+    )

@@ -17,7 +17,7 @@ from typing import List, Dict, Callable
 from http import cookiejar as CookieJar
 from .resources import User, Teacher, Lesson, Addressee, Class, Student, Task
 from datetime import date as Date, time as Time, datetime as DateTime, timedelta as TimeDelta
-from .enums import TaskCompletionStatus, TaskReadStatus, TaskMarkingStatus, SortDirection, TaskSortColumn, FilterEnum, TimetablePeriod
+from .enums import TaskCompletionStatus, TaskReadStatus, TaskMarkingStatus, SortDirection, TaskSortColumn, FilterEnum, TimetablePeriod, TaskOwner, TaskEvent, Recipient
 
 # Type hint the HTML parser
 Response.parser: BeautifulSoup
@@ -40,16 +40,21 @@ class Client():
             'Accept': self.MIME_TYPE_HTML # Can be overriden on a method basis
         })
         self._attempts: int = 0
+        self._user: User = None
         self._cookie_path = storage_path.joinpath('cookies')
 
         if self._cookie_path.is_file():
             cookies = pickle.load(self._cookie_path.open('rb'))
             self._client.cookies.update(cookies)
 
+    # Append an endpoint to the base url
+    def _url(self, endpoint: str) -> str:
+        return self.base_url + endpoint
+
     # Make a request to Firefly and check if we're authenticated.
     # If we're not, attempt to login.
     def _request(self, method: str, endpoint: str, **kwargs) -> Response:
-        url: str = self.base_url + endpoint
+        url: str = self._url(endpoint)
 
         response: Response = self._client.request(method, url, **kwargs)
 
@@ -86,23 +91,17 @@ class Client():
         return self._request('POST', endpoint, **kwargs)
 
     # Get the lessons for a given day
-    def get_lessons(self, from_date: Date, period: str = TimetablePeriod.DAY) -> List[Lesson]:
+    def get_lessons(self, from_date: Date, period: TimetablePeriod = TimetablePeriod.DAY) -> List[Lesson]:
         self.spinner.color = 'green'
         self.spinner.text = 'Retrieving timetable'
 
-        response: Response = self._get('/planner/%s/%s' % (period, from_date.strftime('%Y-%m-%d')))
+        response: Response = self._get('/planner/%s/%s' % (period.foreign_name, from_date.strftime('%Y-%m-%d')))
 
         regex: re.Pattern = re.compile('var PLANNER_INITIAL_STATUS = (.*)')
 
         javascript: str = response.parser.find(string=regex)
 
-        if not javascript:
-            raise Exception('Failed to locate script tag on planner page')
-
         planner_json: str = regex.match(javascript).group(1)
-
-        if not planner_json:
-            raise Exception('Failed to extract planner JSON data')
 
         planner_status: Dict = json.loads(planner_json)
 
@@ -221,7 +220,7 @@ class Client():
         self.spinner.text = 'Retrieving tasks'
 
         params = {
-            'ownerType': 'OnlySetters',
+            'ownerType': TaskOwner.SETTER.foreign_name,
             'archiveStatus': FilterEnum.ALL.foreign_name,
             'completionStatus': completion_status.foreign_name,
             'markingStatus': marking_status.foreign_name,
@@ -323,6 +322,58 @@ class Client():
         self.spinner.ok('✔️')
 
         return tasks, body.get('totalCount')
+
+    # Respond to a task with an event
+    def _respond_to_task(self, task_id: int, event_type: TaskEvent, feedback: str = '') -> str:
+        response = self._post('/_api/1.0/tasks/%r/responses' % task_id, headers={
+            'Referer': self._url('/set-tasks/' + task_id)
+        }, data={
+            'data': json.dumps({
+                'event': {
+                    'author': self.user.guid,
+                    'feedback': feedback,
+                    'sent': DateTime.now().isoformat(),
+                    'type': event_type.foreign_name
+                },
+                'recipient': {
+                    'guid': self.user.guid,
+                    'type': Recipient.USER.foreign_name
+                }
+            })
+        })
+
+        return response.json()['description']['eventGuid']
+
+    # Mark a task as done
+    def mark_task_as_done(self, task_id: int) -> str:
+        return self._respond_to_task(task_id, TaskEvent.DONE)
+
+    # Mark a task as to do
+    def mark_task_as_to_do(self, task_id: int) -> str:
+        return self._respond_to_task(task_id, TaskEvent.UNDONE)
+
+    # Get the authenticated user
+    @property
+    def user(self) -> User:
+        if not self._user:
+            response: Response = self._get('/pupil-portal')
+
+            regex: re.Pattern = re.compile('ff_globals.initialPageData = (.*)')
+
+            javascript: str = response.parser.find(string=regex)
+
+            json: str = regex.match(javascript).group(1)
+
+            user_data: Dict = json.loads(json)['page']['user']
+
+            user_cls: str = Student if user_data.get('@role') == 'student' else User
+
+            self._user = user_cls(
+                guid=user_data['@guid'],
+                name=user_data['@fullname']
+            )
+
+        return self._user
 
     # Request a session cookie from Firefly and save it to a file so we don't have to login again until it expires
     def login(self):

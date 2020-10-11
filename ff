@@ -36,13 +36,13 @@ for name, command in commands.items():
 
 try:
     args = parser.parse_args()
-except ValueError as e:
+
+    command_name = getattr(args, 'command', None)
+
+    if command_name:
+        command = commands[command_name]()
+        command.execute(args)
+    else:
+        parser.print_help()
+except Exception as e:
     sys.exit(e)
-
-command_name = getattr(args, 'command', None)
-
-if command_name:
-    command = commands[command_name]()
-    command.execute(args)
-else:
-    parser.print_help()
