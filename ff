@@ -5,36 +5,11 @@
 
 import sys
 import config
-import dateparser
-from pathlib import Path
+from typing import Dict
+from datetime import date as Date
 from argparse import ArgumentParser
-from configparser import ConfigParser
-from typing import List, Dict, Callable
-from colorama import Style, init as colorinit
-from datetime import time as Time, date as Date
-from commands import Command, GetTimetable, Tasks
-from firefly import FireflyClient, Lesson, Task, TaskSortColumn, SortDirection
-
-# header_str pretty prints a dictionary of headers.
-# This function is for debugging purposes. You probably won't need to use it.
-def header_str(headers: dict):
-    return '\n'.join([k + ': ' + (', '.join(v) if isinstance(v, list) else v) for (k, v) in headers])
-
-
-# get_date attempts to parse the date from stdin, defaulting to today.
-def get_date():
-    date_input = input('Date (leave blank for today): ')
-
-    if date_input:
-        parsed_time = dateparser.parse(date_input)
-
-        if parsed_time:
-            return parsed_time.date()
-        else:
-            print("Couldn't parse the date `{}`. Perhaps try rephrasing it?".format(date_input))
-            return get_date()
-    else:
-        return Date.today()
+from colorama import init as colorinit
+from commands import Command, tasks, timetable
 
 # Create the storage directory is it doesn't exist
 if not config.PATH.is_dir():
@@ -43,8 +18,8 @@ if not config.PATH.is_dir():
 colorinit()
 
 commands: Dict[str, Command] = {
-    'tasks': Tasks,
-    'timetable': GetTimetable
+    'tasks': tasks.GetTasks,
+    'timetable': timetable.GetTimetable
 }
 
 parser = ArgumentParser(

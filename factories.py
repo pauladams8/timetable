@@ -1,14 +1,17 @@
+# Copyright Paul Adams, 2020. All rights reserved.
+# Unauthorized reproduction is prohibited.
+
 import config
+from firefly import Client
 from typing import Callable
-from firefly import FireflyClient
-from configparser import ConfigParser
+from configparser import ConfigParser, SectionProxy
 
 # config_parser creates a new configparser.ConfigParser
 def config_parser():
     config_path = config.PATH.joinpath('timetable.conf')
 
     if not config_path.is_file():
-        raise Exception('Please create a configuration file at `{}`.'.format(config_path))
+        raise Exception('Please create a configuration file at `%s`.' % config_path)
 
     config_parser = ConfigParser()
     config_parser.read(config_path)
@@ -17,20 +20,20 @@ def config_parser():
 
 # create_client creates a new FireflyClient.
 def firefly_client():
-    sections = config.sections()
+    section: SectionProxy = config.section('firefly')
 
-    if len(sections) < 1:
-        raise Exception('Please configure a Firefly hostname')
+    # Get a config value from the Firefly section
+    def get_config(key: str, default: str = None) -> str:
+        value: str = section.get(key, default)
 
-    hostname = sections[0]
-    host_config = config.section(hostname)
+        if not value:
+            raise Exception('Please set the Firefly ' + key)
 
-    for key in ['Username', 'Password']:
-        if not host_config.get(key):
-            raise Exception('Please set the {} for {}'.format(key.lower(), hostname))
+        return value
 
-    protocol = host_config.get('Protocol', 'https')
-    username = host_config['Username']
-    password = host_config['Password']
+    hostname = get_config('hostname')
+    protocol = get_config('protocol', 'https')
+    username = get_config('username')
+    password = get_config('password')
 
-    return FireflyClient(protocol + '://' + hostname, username, password, config.PATH)
+    return Client(protocol + '://' + hostname, username, password, config.PATH)

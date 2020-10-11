@@ -1,4 +1,4 @@
-# Copyright Paul Adams <paul@thecoderszone.com>, 2020. All rights reserved.
+# Copyright Paul Adams, 2020. All rights reserved.
 # Unauthorized reproduction is prohibited.
 
 from typing import List

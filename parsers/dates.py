@@ -1,4 +1,4 @@
-# Copyright Paul Adams <paul@thecoderszone.com>, 2020. All rights reserved.
+# Copyright Paul Adams, 2020. All rights reserved.
 # Unauthorized reproduction is prohibited.
 
 import dateparser
@@ -6,7 +6,7 @@ from typing import List, Type
 from datetime import date as Date
 from argparse import Action as ArgumentParser, ArgumentParser as ArgumentsParser, Namespace as Arguments
 
-# DateParser parses a date string
+# Parses a date string
 class DateParser(ArgumentParser):
     # Invokes the parser function
     def __call__(self, parser: ArgumentsParser, args: Arguments, date_str: str, option_string: str = None):
@@ -21,7 +21,7 @@ class DateParser(ArgumentParser):
 
         return time
 
-# DatePeriodParser parses multiple date strings
+# Parses multiple date strings
 class DatePeriodParser(DateParser):
     # Invokes the parser function
     def __call__(self, parser: ArgumentsParser, args: Arguments, dates: List[str], option_string: str = None):
@@ -33,15 +33,19 @@ class DatePeriodParser(DateParser):
         try:
             until_date = dates[1]
         except IndexError:
-            # DateRange will determine the default until_date
             until_date = None
 
         setattr(args, self.dest, DateRange(from_date, until_date))
 
-# DateRange holds two dates
+# Encapsulates 2 dates
 class DateRange():
-    # Create a DateRange
-    def __init__(self, from_date: Date, until_date: Date):
-        # It seems `from` is a reserved Python keyword, so we'll namespace both dates Hungarian style with _date
-        self.from_date = from_date
-        self.until_date = until_date or from_date
+    # Create an instance
+    def __init__(self, from_date: Date, until_date: Date = None):
+        self.from_date: Date = from_date
+        self._until_date: Date = until_date
+
+    # Get the until date
+    @property
+    def until_date(self):
+        # Default to single date range
+        return self._until_date or self.from_date
