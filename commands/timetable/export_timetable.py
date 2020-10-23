@@ -1,16 +1,22 @@
 # Copyright Paul Adams, 2020. All rights reserved.
 # Unauthorized reproduction is prohibited.
 
-from commands import Command
-from argparse import ArgumentParser
+from .. import Command
 from parsers import DatePeriodParser
+from argparse import Namespace as Arguments
 
 # Export the user's timetable to an iCalendar file.
 class ExportToCalendar(Command):
+    # The command name
+    name: str = 'export'
+
     # The command description
     description: str = 'Export your timetable to an iCalendar file'
 
     # Register the command arguments
-    @classmethod
-    def register_arguments(self, parser: ArgumentParser):
-        parser.add_argument('--repeat', action=DatePeriodParser)
+    def register_arguments(self):
+        self.parser.add_argument('--repeat', action=DatePeriodParser)
+
+    # Execute the command
+    def __call__(self, args: Arguments):
+        pass
