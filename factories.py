@@ -6,7 +6,7 @@ from firefly import Client
 from typing import Callable
 from configparser import ConfigParser, SectionProxy
 
-# config_parser creates a new configparser.ConfigParser
+# Create a new configparser.ConfigParser
 def config_parser():
     config_path = config.PATH.joinpath('timetable.conf')
 
@@ -18,7 +18,7 @@ def config_parser():
 
     return config_parser
 
-# create_client creates a new FireflyClient.
+# Create a new FireflyClient
 def firefly_client():
     section: SectionProxy = config.section('firefly')
 
