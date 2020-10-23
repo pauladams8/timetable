@@ -6,7 +6,7 @@ This script retrieves your timetable from Firefly.
 
 ## Requirements
 - libxml2 and libxslt
-- Python 3.6 or higher
+- Python 3.8 or higher
 - Python dependencies listed in `requirements.txt` (`pip install -r requirements.txt`)
 
 ## Usage
