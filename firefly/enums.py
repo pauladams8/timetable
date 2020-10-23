@@ -1,29 +1,51 @@
 # Copyright Paul Adams, 2020. All rights reserved.
 # Unauthorized reproduction is prohibited.
 
+from __future__ import annotations
+
 from aenum import AutoNumberEnum
+from .events import TaskEvent, MarkAsDoneEvent, MarkAsUndoneEvent
 
 # Enum for filtering
 class Enum(AutoNumberEnum):
     # Create an instance
-    def __init__(self, foreign_name: str, human_name: str = None):
+    def __init__(self, foreign_name: str, human_name: str = None, cls: type = None):
         # Name used by server
         self.foreign_name: str = foreign_name
         # Human readable name for lookups
         self._human_name: str = human_name
+        # Native class
+        self.cls: type = cls
 
     # Get the human readable name
     @property
     def human_name(self) -> str:
-        return self._human_name
+        return self._human_name or self.name.lower()
+
+    # Create a native instance for the enum value
+    def create(self, *args, **kwargs) -> object:
+        if not self.cls:
+            return None
+
+        return self.cls(*args, **kwargs)
+
+    # Get an enum value by an attribute
+    @classmethod
+    def _from_attr(cls, attr: str, value, default = None) -> Enum:
+        try:
+            return next(enum for enum in cls if getattr(enum, attr) == value)
+        except StopIteration:
+            return default
 
     # Get an enum by its human readable name
     @classmethod
-    def from_human_name(cls, human_name: str):
-        try:
-            return next(enum for enum in cls if enum.human_name == human_name)
-        except StopIteration:
-            return None
+    def from_human_name(cls, human_name: str, default: str = None) -> Enum:
+        return cls._from_attr('human_name', human_name, default)
+
+    # Get an enum by its server name
+    @classmethod
+    def from_foreign_name(cls, foreign_name: str, default: str = None) -> Enum:
+        return cls._from_attr('foreign_name', foreign_name, default)
 
 # Abstract enum for filtering
 class FilterEnum(Enum):
@@ -61,11 +83,6 @@ class TaskSortColumn(Enum):
     SET_DATE = 'SetDate'
     DUE_DATE = 'DueDate'
 
-    # Get the human readable name
-    @property
-    def human_name(self):
-        return self.name.lower()
-
 # Enum for the timetable period
 class TimetablePeriod(Enum):
     DAY = 'day'
@@ -76,9 +93,17 @@ class TaskOwner(Enum):
     SETTER = 'OnlySetters'
 
 # Enum for a task response event
-class TaskEvent(Enum):
-    DONE = 'mark-as-done'
-    UNDONE = 'mark-as-undone'
+class TaskEventEnum(Enum):
+    DONE = 'mark-as-done', MarkAsDoneEvent
+    UNDONE = 'mark-as-undone', MarkAsUndoneEvent
+
+    # Create an instance
+    def __init__(self, foreign_name: str, cls: type):
+        super().__init__(foreign_name=foreign_name, cls=cls)
+
+    # Create a native instance for the enum value
+    def create(self, *args, **kwargs) -> TaskEvent:
+        return super().create(*args, **kwargs)
 
 # Enum for a task recipient
 class Recipient(Enum):
