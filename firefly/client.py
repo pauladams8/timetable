@@ -11,13 +11,16 @@ from http import HTTPStatus
 from bs4 import BeautifulSoup
 from yaspin import yaspin as Yaspin
 from argparse import ArgumentParser
+from .filters import Sort, DateRange
 from requests import Session, Response
 from dateutil import parser as dateutil
-from typing import List, Dict, Callable
 from http import cookiejar as CookieJar
+from typing import List, Dict, Callable, Type
+from .events import TaskEvent, MarkAsDoneEvent, MarkAsUndoneEvent
 from .resources import User, Teacher, Lesson, Addressee, Class, Student, Task
 from datetime import date as Date, time as Time, datetime as DateTime, timedelta as TimeDelta
-from .enums import TaskCompletionStatus, TaskReadStatus, TaskMarkingStatus, SortDirection, TaskSortColumn, FilterEnum, TimetablePeriod, TaskOwner, TaskEvent, Recipient
+from .enums import (TaskCompletionStatus, TaskReadStatus, TaskMarkingStatus, SortDirection,
+                    TaskSortColumn, FilterEnum, TimetablePeriod, TaskOwner, TaskEventEnum, Recipient)
 
 # Type hint the HTML parser
 Response.parser: BeautifulSoup
@@ -70,11 +73,7 @@ class Client():
             # Try again
             return self._request(method, endpoint, **kwargs)
 
-        expected_type: str = response.request.headers['Accept']
-
-        # Validate the content type against what we requested
-        if expected_type not in response.headers['Content-Type']:
-            raise Exception('Response content type must be ' + expected_type)
+        expected_type: str = response.request.headers.get('Accept')
 
         if expected_type == self.MIME_TYPE_HTML:
             # Create a parser instance on the response for parsing HTML
@@ -97,16 +96,15 @@ class Client():
 
         response: Response = self._get('/planner/%s/%s' % (period.foreign_name, from_date.strftime('%Y-%m-%d')))
 
-        regex: re.Pattern = re.compile('var PLANNER_INITIAL_STATUS = (.*)')
+        regex: re.Pattern = re.compile(r'var PLANNER_INITIAL_STATUS = (.*)')
 
         javascript: str = response.parser.find(string=regex)
 
-        planner_json: str = regex.match(javascript).group(1)
+        planner_json: str = regex.search(javascript).group(1)
 
         planner_status: Dict = json.loads(planner_json)
 
         lessons: List = []
-        lesson: Dict
 
         for lesson in planner_status['events']:
             # Parse an ISO 8601 compatible time string
@@ -159,7 +157,7 @@ class Client():
                     room=lesson.get('location')
                 )
             )
-            
+
             if p4:
                 lessons.append(p4)
 
@@ -204,22 +202,20 @@ class Client():
 
     # Get the user's set tasks
     def get_tasks(
-            self,
-            completion_status: TaskCompletionStatus.TO_DO,
-            read_status: TaskReadStatus.ALL,
-            marking_status: TaskMarkingStatus = TaskMarkingStatus.ALL,
-            min_due_date: Date = None,
-            max_due_date: Date = None,
-            setters: List[User] = None,
-            addressees: List[Addressee] = None,
-            sort_col: TaskSortColumn = TaskSortColumn.DUE_DATE,
-            sort_direction: SortDirection = SortDirection.DESCENDING,
-            offset: int = 0,
-            limit: int = 10
-        ) -> (List[Task], int):
+        self,
+        completion_status: TaskCompletionStatus.TO_DO,
+        read_status: TaskReadStatus.ALL,
+        marking_status: TaskMarkingStatus = TaskMarkingStatus.ALL,
+        due_date: DateRange = None,
+        setters: List[User] = None,
+        addressees: List[Addressee] = None,
+        sort: Sort = Sort(TaskSortColumn.DUE_DATE),
+        offset: int = 0,
+        limit: int = 10
+    ) -> (List[Task], int):
         self.spinner.text = 'Retrieving tasks'
 
-        params = {
+        params: Dict = {
             'ownerType': TaskOwner.SETTER.foreign_name,
             'archiveStatus': FilterEnum.ALL.foreign_name,
             'completionStatus': completion_status.foreign_name,
@@ -229,18 +225,17 @@ class Client():
             'pageSize': limit,
             'sortingCriteria': [
                 {
-                    'column': sort_col.foreign_name,
-                    'order': sort_direction.foreign_name
+                    'column': sort.column.foreign_name,
+                    'order': sort.direction.foreign_name
                 }
             ]
         }
 
         date_filter: Callable[[Date], str] = lambda date: date.strftime('%Y-%m-%d')
 
-        if min_due_date:
-            params['dueDateFrom'] = date_filter(min_due_date)
-        if max_due_date:
-            params['dueDateTo'] = date_filter(max_due_date)
+        if due_date:
+            params['dueDateFrom'] = date_filter(due_date.from_date)
+            params['dueDateTo'] = date_filter(due_date.until_date)
         if setters:
             params['owners'] = [setter.guid for setter in setters]
         if addressees:
@@ -262,10 +257,10 @@ class Client():
 
             time = DateTime.strptime(date_str, '%Y-%m-%d')
 
-            if isinstance(time, DateTime):
-                return time.date()
+            if not time:
+                return time
 
-            return time
+            return time.date()
 
         # Create a User instance
         def create_user(user_dict: Dict, user_cls: str = User) -> User:
@@ -276,11 +271,8 @@ class Client():
                 sort_key=user_dict.get('sortKey')
             )
 
-        task_dict: Dict
-
         for task_dict in body['items']:
             addressees: List = []
-            addressee_dict: Dict
 
             for addressee_dict in task_dict['addressees']:
                 addressee_cls: str = Class if addressee_dict.get('isGroup') else Student
@@ -324,15 +316,17 @@ class Client():
         return tasks, body.get('totalCount')
 
     # Respond to a task with an event
-    def _respond_to_task(self, task_id: int, event_type: TaskEvent, feedback: str = '') -> str:
+    def _respond_to_task(self, task_id: int, event_type: TaskEventEnum, feedback: str = None) -> TaskEvent:
         response = self._post('/_api/1.0/tasks/%r/responses' % task_id, headers={
-            'Referer': self._url('/set-tasks/' + task_id)
+            'Referer': self._url('/set-tasks/' + str(task_id)),
+            'Accept': self.MIME_TYPE_JSON
         }, data={
             'data': json.dumps({
                 'event': {
                     'author': self.user.guid,
-                    'feedback': feedback,
-                    'sent': DateTime.now().isoformat(),
+                    'feedback': '' if feedback is None else feedback,
+                    # isoformat doesn't include timezone
+                    'sent': DateTime.utcnow().isoformat(timespec='milliseconds') + 'Z',
                     'type': event_type.foreign_name
                 },
                 'recipient': {
@@ -342,15 +336,32 @@ class Client():
             })
         })
 
-        return response.json()['description']['eventGuid']
+        if response.status_code == HTTPStatus.FORBIDDEN:
+                raise Exception("Can't mark the task as %s as it's alrady marked as %s" % (
+                        event_type.human_name, event_type.human_name
+                    )
+                )
+
+        event: dict = response.json()['description']
+
+        event_type: TaskEventEnum = TaskEventEnum.from_foreign_name(event['type'])
+
+        return event_type.create(
+            guid=event['eventGuid'],
+            user=User(
+                event['author']
+            ),
+            sent_at=dateutil.isoparse(event['sent']),
+            version_id=event['eventVersionId']
+        )
 
     # Mark a task as done
     def mark_task_as_done(self, task_id: int) -> str:
-        return self._respond_to_task(task_id, TaskEvent.DONE)
+        return self._respond_to_task(task_id, TaskEventEnum.DONE)
 
     # Mark a task as to do
     def mark_task_as_to_do(self, task_id: int) -> str:
-        return self._respond_to_task(task_id, TaskEvent.UNDONE)
+        return self._respond_to_task(task_id, TaskEventEnum.UNDONE)
 
     # Get the authenticated user
     @property
@@ -358,13 +369,13 @@ class Client():
         if not self._user:
             response: Response = self._get('/pupil-portal')
 
-            regex: re.Pattern = re.compile('ff_globals.initialPageData = (.*)')
+            regex: re.Pattern = re.compile(r'ff_globals\.initialPageData = (.*);')
 
             javascript: str = response.parser.find(string=regex)
 
-            json: str = regex.match(javascript).group(1)
+            json_str: str = regex.search(javascript).group(1)
 
-            user_data: Dict = json.loads(json)['page']['user']
+            user_data: Dict = json.loads(json_str)['page']['user']
 
             user_cls: str = Student if user_data.get('@role') == 'student' else User
 
@@ -377,7 +388,7 @@ class Client():
 
     # Request a session cookie from Firefly and save it to a file so we don't have to login again until it expires
     def login(self):
-        old_spinner_text = self.spinner.text
+        old_spinner_text: str = self.spinner.text
         self.spinner.text = 'Logging in'
 
         response = self._get('/login/login.aspx')
