@@ -33,10 +33,9 @@ cmd: Command = Command(
     ]
 )
 
-# Parse the arguments
-args: Arguments = cmd.parser.parse_args()
-
 try:
+    # Parse the arguments
+    args: Arguments = cmd.parser.parse_args()
     # Execute the command 
     args.func(args)
 except Exception as e:
