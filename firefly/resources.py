@@ -10,7 +10,7 @@ class User():
     def __init__(
             self,
             guid: str,
-            name: str,
+            name: str = None,
             is_deleted: bool = False,
             sort_key: str = None
         ):
