@@ -2,18 +2,20 @@
 # Unauthorized reproduction is prohibited.
 
 from commands import Command
-from argparse import ArgumentParser, Namespace as Arguments
+from argparse import Namespace as Arguments
 
 # Mark a task as done
 class CompleteTask(Command):
-    # The task description
+    # The command name
+    name: str = 'done'
+
+    # The command description
     description: str = 'Mark a task as done'
 
     # Register the command arguments
-    @classmethod
-    def register_arguments(self, parser: ArgumentParser):
-        parser.add_argument('id', action='store_const', help='The ID of the task to mark as done. You can retrieve a list of your tasks using %(prog)s tasks.')
+    def register_arguments(self):
+        self.parser.add_argument('id', type=int, help='The ID of the task to mark as done. You can retrieve a list of your tasks by running %(prog)s tasks.')
 
     # Execute the command
-    def execute(self, args: Arguments):
-        pass # Awaiting mark_as_done impl on the Firefly client
+    def __call__(self, args: Arguments):
+        self.firefly_client.mark_task_as_done(task_id=args.id)
