@@ -7,42 +7,37 @@ import sys
 import config
 from typing import Dict
 from datetime import date as Date
-from argparse import ArgumentParser
 from colorama import init as colorinit
 from commands import Command, tasks, timetable
+from argparse import ArgumentParser as ArgumentsParser, Namespace as Arguments
 
-# Create the storage directory is it doesn't exist
+# Create the storage directory if it doesn't exist
 if not config.PATH.is_dir():
     config.PATH.mkdir()
 
+# Init colourful output
 colorinit()
 
-commands: Dict[str, Command] = {
-    'tasks': tasks.GetTasks,
-    'timetable': timetable.GetTimetable
-}
-
-parser = ArgumentParser(
+# Create the root parser
+parser: ArgumentsParser = ArgumentsParser(
     description='Retrieve your timetable, tasks and more from Firefly',
-    epilog='Copyright %s, %d. All rights reserved.' % (config.AUTHOR, Date.today().year),
+    epilog='Copyright %s, %d. All rights reserved.' % (config.AUTHOR, Date.today().year)
 )
-parser.add_argument('-n', '--no-interaction', help='Prevent the program from requesting input via stdin', action='store_true')
 
-subparsers = parser.add_subparsers(dest='command', help='For help with a specific command, use %(prog)s [COMMAND] --help')
+# Create the root command instance
+cmd: Command = Command(
+    parser=parser,
+    subcommands=[
+        tasks.GetTasks,
+        timetable.GetTimetable
+    ]
+)
 
-for name, command in commands.items():
-    subparser = subparsers.add_parser(name=name, prog=parser.prog, description=command.description)
-    command.register_arguments(subparser)
+# Parse the arguments
+args: Arguments = cmd.parser.parse_args()
 
 try:
-    args = parser.parse_args()
-
-    command_name = getattr(args, 'command', None)
-
-    if command_name:
-        command = commands[command_name]()
-        command.execute(args)
-    else:
-        parser.print_help()
+    # Execute the command 
+    args.func(args)
 except Exception as e:
     sys.exit(e)
