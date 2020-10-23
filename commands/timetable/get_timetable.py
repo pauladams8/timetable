@@ -1,38 +1,40 @@
 # Copyright Paul Adams, 2020. All rights reserved.
 # Unauthorized reproduction is prohibited.
 
+from .. import Command
 from colorama import Style
-from commands import Command
 from parsers import DateParser
 from typing import Callable, List
+from .export_timetable import ExportToCalendar
 from datetime import date as Date, time as Time
 from firefly import TimetablePeriod, Lesson, Teacher
-from argparse import ArgumentParser, Namespace as Arguments
+from argparse import ArgumentParser as ArgumentsParser, Namespace as Arguments
 
 # Retrieves the user's timetable
 class GetTimetable(Command):
+    # The command name
+    name: str = 'timetable'
+
     # The command description
     description: str = 'Retrieve your timetable'
 
+    # The subcommands
+    subcommands: List[Command] = [
+        ExportToCalendar
+    ]
+
     # Register the command arguments
-    @classmethod
-    def register_arguments(self, parser: ArgumentParser):
-        parser.add_argument('-d', '--date', action=DateParser, default=Date.today(), help='The timetable date; defaults to today. ' + self.INTELLEGENT_DATE_HINT)
+    def register_arguments(self):
+        self.parser.add_argument('-d', '--date', action=DateParser, default=Date.today(), help='The timetable date; defaults to today. ' + self.INTELLEGENT_DATE_HINT)
 
     # Execute the command
-    def execute(self, args: Arguments):
-        # self.firefly_client.spinner.start()
-        lessons = self.firefly_client.get_lessons(args.date, TimetablePeriod.DAY)
-        # self.firefly_client.spinner.stop()
+    def __call__(self, args: Arguments):
+        timetable: List[Lesson] = self.print_client_state(
+            lambda: self.firefly_client.get_lessons(args.date, TimetablePeriod.DAY)
+        )
 
-        self._print_timetable(lessons)
-
-    # Pretty print the timetable to the console
-    def _print_timetable(self, timetable: List[Lesson]):
         if len(timetable) < 1:
             print('🎉 No lessons in timetable')
-
-        lesson: Lesson
 
         for lesson in timetable:
             time_format: Callable[[Time], str] = lambda time: time.strftime('%H:%M')
