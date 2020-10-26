@@ -15,7 +15,7 @@ def human_list(items: List[str], conj: str = 'and', determiners: bool = False) -
     items: List = items.copy()
 
     # It is idiomatic in English to bridge the last 2 words with a conjuction
-    items.append(' '.join([items.pop(), conj, items.pop()]))
+    items.append(' '.join([items.pop(-2), conj, items.pop()]))
 
     # Lists of 2 can follow a determiner
     if determiners and len(items) == 2:
