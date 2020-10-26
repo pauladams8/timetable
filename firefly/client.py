@@ -18,6 +18,7 @@ from http import cookiejar as CookieJar
 from typing import List, Dict, Callable, Type
 from .events import TaskEvent, MarkAsDoneEvent, MarkAsUndoneEvent
 from .resources import User, Teacher, Lesson, Addressee, Class, Student, Task
+from .times import BREAK_START_TIME, BREAK_END_TIME, LUNCH_START_TIME, LUNCH_END_TIME
 from datetime import date as Date, time as Time, datetime as DateTime, timedelta as TimeDelta
 from .enums import (TaskCompletionStatus, TaskReadStatus, TaskMarkingStatus, SortDirection,
                     TaskSortColumn, FilterEnum, TimetablePeriod, TaskOwner, TaskEventEnum, Recipient)
@@ -91,8 +92,19 @@ class Client():
 
     # Get the lessons for a given day
     def get_lessons(self, from_date: Date, period: TimetablePeriod = TimetablePeriod.DAY) -> List[Lesson]:
+        day: int = from_date.day
+        suffix: str
+
+        # https://stackoverflow.com/questions/739241/date-ordinal-output
+        if 4 <= day <= 20 or 24 <= day <= 30:
+            suffix = 'th'
+        else:
+            suffix = ['st', 'nd', 'rd'][day % 10 - 1]
+
+        indicator: str = ' '.join(['timetable for', ('week beginning ' if period == TimetablePeriod.WEEK else '') + str(day) + suffix, from_date.strftime('%B')])
+
         self.spinner.color = 'green'
-        self.spinner.text = 'Retrieving timetable'
+        self.spinner.text = 'Retrieving ' + indicator
 
         response: Response = self._get('/planner/%s/%s' % (period.foreign_name, from_date.strftime('%Y-%m-%d')))
 
@@ -114,39 +126,48 @@ class Client():
 
                 return dateutil.isoparse(iso_time)
 
-            start_time: Time = parse_time(lesson.get('isostartdate'))
-            end_time: Time = parse_time(lesson.get('isoenddate'))
-
-            p4: Lesson = None
+            start_time: DateTime = parse_time(lesson.get('isostartdate'))
+            end_time: DateTime = parse_time(lesson.get('isoenddate'))
             subject: str = lesson.get('subject')
 
-            if not subject:
-                free_period: str = 'Free Period'
+            p2: Lesson = None
+            p4: Lesson = None
 
-                if start_time == Time(10, 45):
-                    subject = 'Break'
-                    break_end_time: Time = Time(11, 10)
-
-                    # Firefly does not distinguish between break and free period
-                    if end_time != break_end_time:
-                        p4_end_time: Time = end_time
-                        p4 = Lesson(
-                            start_time=break_end_time,
-                            end_time=p4_end_time,
-                            subject=free_period
+            # Firefly does not distinguish between break and free period
+            if start_time.time() == BREAK_START_TIME or end_time.time() == BREAK_END_TIME:
+                if start_time.time() != BREAK_START_TIME:
+                    p2 = Lesson(
+                        start_time=start_time,
+                        end_time=DateTime.combine(
+                            end_time.date(),
+                            BREAK_START_TIME
                         )
-                        end_time = break_end_time
-
-                elif start_time == Time(12, 55) and end_time == Time(14):
-                    subject = 'Lunch'
-                else:
-                    subject = free_period
+                    )
+                    start_time = DateTime.combine(
+                        start_time.date(),
+                        BREAK_START_TIME
+                    )
+                if end_time.time() != BREAK_END_TIME:
+                    p4 = Lesson(
+                        start_time=DateTime.combine(
+                            start_time.date(),
+                            BREAK_END_TIME
+                        ),
+                        end_time=end_time
+                    )
+                    end_time = DateTime.combine(
+                        end_time.date(),
+                        BREAK_END_TIME
+                    )
 
             teacher_name: str = lesson.get('chairperson')
             teacher: Teacher = None
 
             if teacher_name:
                 teacher = Teacher(teacher_name)
+
+            if p2:
+                lessons.append(p2)
 
             lessons.append(
                 Lesson(
@@ -161,7 +182,7 @@ class Client():
             if p4:
                 lessons.append(p4)
 
-        self.spinner.text = 'Retrieved Timetable'
+        self.spinner.text = 'Retrieved ' + indicator
         self.spinner.ok('✔')
 
         return lessons
@@ -226,7 +247,7 @@ class Client():
             'sortingCriteria': [
                 {
                     'column': sort.column.foreign_name,
-                    'order': sort.direction.foreign_name
+                    'order': sort.direction(completion_status).foreign_name
                 }
             ]
         }
@@ -243,7 +264,7 @@ class Client():
 
         response = self._post('/api/v2/taskListing/view/self/tasks/filterBy', json=params, headers={
             'Accept': self.MIME_TYPE_JSON,
-            'Referer': 'https://firefly.kgs.org.uk/set-tasks'
+            'Referer': self._url('/set-tasks')
         })
 
         body = response.json()
