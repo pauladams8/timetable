@@ -3,7 +3,8 @@
 
 from abc import ABC
 from typing import List
-from datetime import time as Time, date as Date, timedelta as TimeDelta
+from datetime import datetime as DateTime, date as Date, timedelta as TimeDelta
+from .times import BREAK_START_TIME, BREAK_END_TIME, LUNCH_START_TIME, LUNCH_END_TIME
 
 # User account
 class User():
@@ -39,18 +40,30 @@ class Teacher():
 
 # Subject taught by a teacher in a room
 class Lesson():
-    def __init__(self,
-            start_time: Time,
-            end_time: Time,
-            subject: str,
+    def __init__(
+            self,
+            start_time: DateTime,
+            end_time: DateTime,
+            subject: str = None,
             teacher: Teacher = None,
             room: str = None
         ):
         self.start_time = start_time
         self.end_time = end_time
-        self.subject = subject
+        self._subject = subject
         self.teacher = teacher
         self.room = room
+
+    # Get the subject
+    @property
+    def subject(self):
+        if self.start_time.time() == BREAK_START_TIME and self.end_time.time() == BREAK_END_TIME:
+            return 'Break'
+
+        if self.start_time.time() == LUNCH_START_TIME and self.end_time.time() == LUNCH_END_TIME:
+            return 'Lunch'
+
+        return self._subject or 'Free Period'
 
 # Recipient of a task
 class Addressee(ABC):
