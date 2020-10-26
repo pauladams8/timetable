@@ -5,10 +5,10 @@ from .. import Command
 from colorama import Style
 from parsers import DateParser
 from typing import Callable, List
+from argparse import Namespace as Arguments
 from .export_timetable import ExportToCalendar
 from datetime import date as Date, time as Time
 from firefly import TimetablePeriod, Lesson, Teacher
-from argparse import ArgumentParser as ArgumentsParser, Namespace as Arguments
 
 # Retrieves the user's timetable
 class GetTimetable(Command):

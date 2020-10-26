@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from typing import Callable
 from aenum import AutoNumberEnum
 from .events import TaskEvent, MarkAsDoneEvent, MarkAsUndoneEvent
 
@@ -20,6 +21,7 @@ class Enum(AutoNumberEnum):
     # Get the human readable name
     @property
     def human_name(self) -> str:
+        # Bear in mind spaces need escaping, so snake case is preferable to the user in a CLI
         return self._human_name or self.name.lower()
 
     # Create a native instance for the enum value
@@ -29,23 +31,23 @@ class Enum(AutoNumberEnum):
 
         return self.cls(*args, **kwargs)
 
-    # Get an enum value by an attribute
+    # Filter the enum by a callback
     @classmethod
-    def _from_attr(cls, attr: str, value, default = None) -> Enum:
+    def filter(cls, callback: Callable[Enum], default = None) -> Enum:
         try:
-            return next(enum for enum in cls if getattr(enum, attr) == value)
+            return next(enum for enum in cls if callback(enum))
         except StopIteration:
             return default
 
     # Get an enum by its human readable name
     @classmethod
     def from_human_name(cls, human_name: str, default: str = None) -> Enum:
-        return cls._from_attr('human_name', human_name, default)
+        return cls.filter(lambda enum: enum.human_name == human_name, default)
 
     # Get an enum by its server name
     @classmethod
     def from_foreign_name(cls, foreign_name: str, default: str = None) -> Enum:
-        return cls._from_attr('foreign_name', foreign_name, default)
+        return cls.filter(lambda enum: enum.foreign_name == foreign_name, default)
 
 # Abstract enum for filtering
 class FilterEnum(Enum):
@@ -53,9 +55,9 @@ class FilterEnum(Enum):
 
 # Enum for filtering tasks by whether the user has completed them
 class TaskCompletionStatus(Enum):
+    ALL = 'AllIncludingArchived'
     TO_DO = 'Todo'
     DONE = 'DoneOrArchived'
-    ALL = 'AllIncludingArchived'
 
 # Enum for filtering tasks by whether the user has read them
 class TaskReadStatus(Enum):
@@ -80,8 +82,8 @@ class SortColumn(Enum):
 
 # Enum for columns used to sort tasks
 class TaskSortColumn(Enum):
-    SET_DATE = 'SetDate'
     DUE_DATE = 'DueDate'
+    SET_DATE = 'SetDate'
 
 # Enum for the timetable period
 class TimetablePeriod(Enum):

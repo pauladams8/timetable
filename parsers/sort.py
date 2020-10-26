@@ -29,9 +29,9 @@ class SortParser(StoreAction, ABC):
         return parse_enum(dir, SortDirection)
 
     # Parse the sort column
-    def parse_column(self, col_str: str, cls: Type[SortColumn] = SortColumn) -> SortColumn:
+    def parse_column(self, col: str) -> SortColumn:
         pass
-    
+
 # Parses the task sort column
 class TaskSortParser(SortParser):
     # Parse the sort column
