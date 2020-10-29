@@ -86,17 +86,16 @@ class OccurenceSet():
         # Ensure all corresponding occurences have the same delta
         delta: TimeDelta = None
 
-        for i, occurence in enumerate(self.occurences):
-            eq: Occurence = self.occurences[i]
-            test_delta: TimeDelta = eq.start - occurence.start
+        for occurences in zip(self.occurences, other.occurences):
+            start_delta: TimeDelta = occurences[1].start - occurences[0].start
+            end_delta: TimeDelta = occurences[1].end - occurences[1].end
 
-            if test_delta != eq.end - occurence.end:
+            if start_delta != end_delta:
                 return False
 
             if not delta:
-                delta = test_delta
-
-            if test_delta != delta:
+                delta = start_delta
+            elif start_delta != delta:
                 return False
 
         return True
