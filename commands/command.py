@@ -55,7 +55,7 @@ class Command():
 
     # Execute the command
     def __call__(self, args: Arguments):
-        pass
+        self.parser.print_help()
 
     # Print the client loading state while excuting the callback
     def print_client_state(self, callback: Callable):
