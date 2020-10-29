@@ -3,8 +3,8 @@
 
 from abc import ABC
 from typing import List
+from .times import BREAK, LUNCH
 from datetime import datetime as DateTime, date as Date, timedelta as TimeDelta
-from .times import BREAK_START_TIME, BREAK_END_TIME, LUNCH_START_TIME, LUNCH_END_TIME
 
 # User account
 class User():
@@ -57,10 +57,10 @@ class Lesson():
     # Get the subject
     @property
     def subject(self):
-        if self.start_time.time() == BREAK_START_TIME and self.end_time.time() == BREAK_END_TIME:
+        if self.start_time.time() == BREAK.start_time and self.end_time.time() == BREAK.end_time:
             return 'Break'
 
-        if self.start_time.time() == LUNCH_START_TIME and self.end_time.time() == LUNCH_END_TIME:
+        if self.start_time.time() == LUNCH.start_time and self.end_time.time() == LUNCH.end_time:
             return 'Lunch'
 
         return self._subject or 'Free Period'

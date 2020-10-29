@@ -81,7 +81,7 @@ class SortColumn(Enum):
     pass
 
 # Enum for columns used to sort tasks
-class TaskSortColumn(Enum):
+class TaskSortColumn(SortColumn):
     DUE_DATE = 'DueDate'
     SET_DATE = 'SetDate'
 

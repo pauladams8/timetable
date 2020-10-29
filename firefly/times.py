@@ -3,8 +3,18 @@
 
 from datetime import time as Time
 
+# Daily recurring event
+class DailyEvent():
+    def __init__(self, start_time: Time, end_time: Time):
+        self.start_time: Time = start_time
+        self.end_time: Time = end_time
+
 # These constants are KGS specific
-BREAK_START_TIME: Time = Time(10, 45)
-BREAK_END_TIME: Time = Time(11, 10)
-LUNCH_START_TIME: Time = Time(12, 55)
-LUNCH_END_TIME: Time = Time(14)
+BREAK: DailyEvent = DailyEvent(
+    start_time=Time(10, 45),
+    end_time=Time(11, 10)
+)
+LUNCH: DailyEvent = DailyEvent(
+    start_time=Time(12, 55),
+    end_time=Time(14)
+)
