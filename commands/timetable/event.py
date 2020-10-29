@@ -3,59 +3,119 @@
 
 from __future__ import annotations
 
-from typing import List
+from collections import Counter
+from typing import List, Dict, Tuple
 from datetime import datetime as DateTime, timedelta as TimeDelta
 
-# Event class
-class Event():
-    def __init__(
-        self,
-        title: str,
-        location: str,
-        starts: DateTime,
-        ends: DateTime,
-        invitees: List[str],
-        events: List[Event] = None,
-        rrule: TimeDelta = None
-    ):
-        self.title: str = title
-        self.location: str = location
-        self.starts: DateTime = starts
-        self.ends: DateTime = ends
-        self.invitees: List[str] = invitees
-        self.events: List[Event] = events or []
-        self._rrule = rrule
+# Instance of an event
+class Occurence():
+    # Create an instance
+    def __init__(self, start: DateTime, end: DateTime):
+        self.start: DateTime = start
+        self.end: DateTime = end
 
-    # Determine if event is equal to another event
-    def __eq__(self, event: Event) -> bool:
-        if self.title != event.title:
-            return False
+    # Get the duration
+    @property
+    def duration(self) -> TimeDelta:
+        return self.end - self.start
 
-        if self.location != event.location:
-            return False
+# Set of occurences
+class OccurenceSet():
+    # Create an instance
+    def __init__(self, occurences: List[Occurence], rrule: RecurrenceRule = None, exceptions: List[Occurence] = None):
+        self._occurences: List[Occurence] = occurences or []
+        self._rrule: RecurrenceRule = rrule
+        self._exceptions: List[Occurence] = exceptions or []
 
-        if self.invitees != event.invitees:
-            return False
+    # Compute all occurences
+    @property
+    def occurences(self):
+        occurences: List[Occurence] = self._occurences.copy()
+
+        for occurence in self._rrule.occurences():
+            if occurence not in occurences:
+                occurences.append(occurence)
+
+        return occurences - self.exceptions
+
+    # Compute all exceptions
+    @property
+    def exceptions(self):
+        return self._exceptions
+
+    # Compute the recurrence rule, removing occurences that satisfy it
+    @property
+    def rrule(self):
+        if not self._rrule:
+            rrules: List[RecurrenceRule] = []
+
+            for start in range(len(self._occurences)):
+                for end in range(len(self._occurences[start:])):
+                    subset: OccurenceSet = OccurenceSet(self._occurences[start:end])
+                    rrule: RecurrenceRule = RecurrenceRule(matches=subset)
+                    for test_start in range(len(self._occurences)):
+                        test_end = test_start + len(subset)
+                        test_subset: OccurenceSet = OccurenceSet(self._occurences[test_start:test_end])
+                        if subset.is_repeat(test_subset):
+                            rrule.matches.extend(subset.occurences)
+                    rrules.append(rrule)
+
+            rrule: RecurrenceRule = max(rrules, lambda rrule: len(rrule.matches))
+
+            for match in rrule.matches:
+                self._occurences.remove(match)
+
+            for occurence in self.rrule.occurences:
+                if occurence not in self._occurences:
+                    self._exceptions.append(occurence)
+
+            self._rrule = rrule
+
+        return self._rrule
+
+    # Compute the length of the occurence set
+    def __len__(self) -> int:
+        return len(self.occurences)
+
+    # Extend the occurence set
+    def extend(self, occurences: List[Occurence]):
+        self.occurences.extend(occurences)
+
+    # Determine if another OccurenceSet is a repeat
+    def is_repeat(self, other: OccurenceSet) -> bool:
+        # Ensure all corresponding occurences have the same delta
+        delta: TimeDelta = None
+
+        for i, occurence in enumerate(self.occurences):
+            eq: Occurence = self.occurences[i]
+            test_delta: TimeDelta = eq.start - occurence.start
+
+            if test_delta != eq.end - occurence.end:
+                return False
+
+            if not delta:
+                delta = test_delta
+
+            if test_delta != delta:
+                return False
 
         return True
 
-    # Hash the event
-    def __hash__(self) -> int:
-        return hash((self.starts, self.ends))
+# Rule to generate occurences
+class RecurrenceRule():
+    # Create an instance
+    def __init__(self, matches: OccurenceSet, events: List[Event] = None):
+        self.matches: OccurenceSet = matches
 
-    # Compute the recurrence rule, removing subevents that satisfy it
-    @property
-    def rrule(self):
-        if self._rrule:
-            return self._rrule
-
-        diffs: List[TimeDelta] = []
-
-        for i, event in enumerate(self.events):
-            try:
-                next: Event = self.events[i + 1]
-            except IndexError:
-                continue
-
-            diffs.append(next.starts - event.starts)
-            diffs.append(next.ends - event.ends)
+# Event class
+class Event():
+    # Create an instance
+    def __init__(
+        self,
+        occurences: OccurenceSet,
+        title: str = None,
+        location: str = None,
+    ):
+        self.title: str = title
+        self.location: str = location
+        self._occurences: OccurenceSet = occurences

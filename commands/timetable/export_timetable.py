@@ -2,14 +2,14 @@
 # Unauthorized reproduction is prohibited.
 
 import sys
-from ics import Event
-# from .event import Event
+# from ics import Event
+from .event import Event
 from .. import Command
 from typing import List
 from parsers import DateParser
 from argparse import Namespace as Arguments, FileType
 from datetime import date as Date, timedelta as TimeDelta
-from firefly import TimetableDateRange, Lesson, TimetablePeriod
+from firefly import Lesson, TimetablePeriod
 
 # Export the user's timetable to an iCalendar file.
 class ExportToCalendar(Command):
@@ -38,16 +38,11 @@ class ExportToCalendar(Command):
 
         for lesson in timetable:
             event: Event = Event(
-                name=lesson.subject,
-                location=lesson.room,
-                begin=lesson.start_time,
-                end=lesson.end_time,
+                title=lesson.subject,
+                location=lesson.room
             )
 
-            event: Event = Event
-
             for i, existing_event in enumerate(events):
-                # If repeat of existing event
                 if existing_event == event:
                     events[i].events.append(event)
                     break
@@ -55,10 +50,7 @@ class ExportToCalendar(Command):
             else:
                 events.append(event)
 
-        for event in events:
-            print(event.title)
-            for event in event.events:
-                print('\t' + event.title)
+        sys.exit(len(events))
 
     # Get the lessons between the from and until dates
     def get_lessons(self, from_date: Date, until_date: Date, timeout: int) -> List[Lesson]:
