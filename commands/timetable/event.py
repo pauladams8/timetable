@@ -62,12 +62,12 @@ class OccurenceSet():
 
             rrule: RecurrenceRule = max(rrules, lambda rrule: len(rrule.matches))
 
-            for match in rrule.matches:
-                self._occurences.remove(match)
-
             for occurence in self.rrule.occurences:
                 if occurence not in self._occurences:
                     self._exceptions.append(occurence)
+
+            for match in rrule.matches:
+                self._occurences.remove(match)
 
             self._rrule = rrule
 
