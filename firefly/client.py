@@ -2,24 +2,20 @@
 # Unauthorised reproduction is prohibited.
 
 import re
-import os
 import json
 import pickle
 from pathlib import Path
-from colorama import Style
+from .times import BREAK
 from http import HTTPStatus
 from bs4 import BeautifulSoup
+from .events import TaskEvent
 from yaspin import yaspin as Yaspin
-from argparse import ArgumentParser
 from .filters import Sort, DateRange
 from requests import Session, Response
 from dateutil import parser as dateutil
-from http import cookiejar as CookieJar
 from typing import List, Dict, Callable, Type
-from .events import TaskEvent, MarkAsDoneEvent, MarkAsUndoneEvent
+from datetime import date as Date, time as Time, datetime as DateTime
 from .resources import User, Teacher, Lesson, Addressee, Class, Student, Task
-from .times import BREAK_START_TIME, BREAK_END_TIME, LUNCH_START_TIME, LUNCH_END_TIME
-from datetime import date as Date, time as Time, datetime as DateTime, timedelta as TimeDelta
 from .enums import (TaskCompletionStatus, TaskReadStatus, TaskMarkingStatus, SortDirection,
                     TaskSortColumn, FilterEnum, TimetablePeriod, TaskOwner, TaskEventEnum, Recipient)
 
@@ -134,30 +130,30 @@ class Client():
             p4: Lesson = None
 
             # Firefly does not distinguish between break and free period
-            if start_time.time() == BREAK_START_TIME or end_time.time() == BREAK_END_TIME:
-                if start_time.time() != BREAK_START_TIME:
+            if start_time.time() == BREAK.start_time or end_time.time() == BREAK.end_time:
+                if start_time.time() != BREAK.start_time:
                     p2 = Lesson(
                         start_time=start_time,
                         end_time=DateTime.combine(
                             end_time.date(),
-                            BREAK_START_TIME
+                            BREAK.start_time
                         )
                     )
                     start_time = DateTime.combine(
                         start_time.date(),
-                        BREAK_START_TIME
+                        BREAK.start_time
                     )
-                if end_time.time() != BREAK_END_TIME:
+                if end_time.time() != BREAK.end_time:
                     p4 = Lesson(
                         start_time=DateTime.combine(
                             start_time.date(),
-                            BREAK_END_TIME
+                            BREAK.end_time
                         ),
                         end_time=end_time
                     )
                     end_time = DateTime.combine(
                         end_time.date(),
-                        BREAK_END_TIME
+                        BREAK.end_time
                     )
 
             teacher_name: str = lesson.get('chairperson')
