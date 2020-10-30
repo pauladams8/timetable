@@ -122,38 +122,38 @@ class Client():
 
                 return dateutil.isoparse(iso_time)
 
-            start_time: DateTime = parse_time(lesson.get('isostartdate'))
-            end_time: DateTime = parse_time(lesson.get('isoenddate'))
+            start: DateTime = parse_time(lesson.get('isostartdate'))
+            end: DateTime = parse_time(lesson.get('isoenddate'))
             subject: str = lesson.get('subject')
 
             p2: Lesson = None
             p4: Lesson = None
 
             # Firefly does not distinguish between break and free period
-            if start_time.time() == BREAK.start_time or end_time.time() == BREAK.end_time:
-                if start_time.time() != BREAK.start_time:
+            if start.time() == BREAK.start or end.time() == BREAK.end:
+                if start.time() != BREAK.start:
                     p2 = Lesson(
-                        start_time=start_time,
-                        end_time=DateTime.combine(
-                            end_time.date(),
-                            BREAK.start_time
+                        start=start,
+                        end=DateTime.combine(
+                            end.date(),
+                            BREAK.start
                         )
                     )
-                    start_time = DateTime.combine(
-                        start_time.date(),
-                        BREAK.start_time
+                    start = DateTime.combine(
+                        start.date(),
+                        BREAK.start
                     )
-                if end_time.time() != BREAK.end_time:
+                if end.time() != BREAK.end:
                     p4 = Lesson(
-                        start_time=DateTime.combine(
-                            start_time.date(),
-                            BREAK.end_time
+                        start=DateTime.combine(
+                            start.date(),
+                            BREAK.end
                         ),
-                        end_time=end_time
+                        end=end
                     )
-                    end_time = DateTime.combine(
-                        end_time.date(),
-                        BREAK.end_time
+                    end = DateTime.combine(
+                        end.date(),
+                        BREAK.end
                     )
 
             teacher_name: str = lesson.get('chairperson')
@@ -167,8 +167,8 @@ class Client():
 
             lessons.append(
                 Lesson(
-                    start_time=start_time,
-                    end_time=end_time,
+                    start=start,
+                    end=end,
                     subject=subject,
                     teacher=teacher,
                     room=lesson.get('location')
@@ -312,8 +312,8 @@ class Client():
                     title=task_dict.get('title'),
                     addressees=addressees,
                     setter=create_user(task_dict.get('setter'), Student if task_dict.get('isPersonalTask') else User),
-                    set_date=parse_date(task_dict.get('setDate')),
-                    due_date=parse_date(task_dict.get('dueDate')),
+                    set=parse_date(task_dict.get('setDate')),
+                    due=parse_date(task_dict.get('dueDate')),
                     is_done=task_dict.get('isDone'),
                     is_read=task_dict.get('isUnread'),
                     is_archived=task_dict.get('archived'),
@@ -354,7 +354,7 @@ class Client():
         })
 
         if response.status_code == HTTPStatus.FORBIDDEN:
-                raise Exception("Can't mark the task as %s as it's alrady marked as %s" % (
+                raise Exception("Can't mark the task as %s as it's already marked as %s" % (
                         event_type.human_name, event_type.human_name
                     )
                 )
