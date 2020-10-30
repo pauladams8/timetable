@@ -38,7 +38,7 @@ class GetTimetable(Command):
 
         for lesson in timetable:
             time_format: Callable[[Time], str] = lambda time: time.strftime('%H:%M')
-            time_period: str = time_format(lesson.start_time) + ' - ' + time_format(lesson.end_time)
+            time_period: str = time_format(lesson.start) + ' - ' + time_format(lesson.end)
 
             print(Style.DIM + time_period + Style.RESET_ALL, Style.BRIGHT + lesson.subject + Style.RESET_ALL)
 
