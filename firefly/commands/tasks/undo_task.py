@@ -4,16 +4,17 @@
 from .. import Command
 from argparse import Namespace as Arguments
 
+# Mark a task as todo
 class UndoTask(Command):
     # The command name
-    name: str = 'undo'
+    name: str = 'todo'
 
     # The command description
-    description: str = 'Mark a task as undone'
+    description: str = 'Mark a task as todo'
 
     # Register the command arguments
     def register_arguments(self):
-        self.parser.add_argument('id', type=int, help='The ID of the task to mark as undone. You can retrieve a list of your tasks by running %(prog)s tasks.')
+        self.parser.add_argument('id', type=int, help='The ID of the task to mark as todo. You can retrieve a list of your tasks by running %(prog)s tasks.')
 
     # Execute the command
     def __call__(self, args: Arguments):
