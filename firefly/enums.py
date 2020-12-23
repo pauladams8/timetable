@@ -33,7 +33,7 @@ class Enum(AutoNumberEnum):
 
     # Filter the enum by a callback
     @classmethod
-    def filter(cls, callback: Callable[Enum], default = None) -> Enum:
+    def filter(cls, callback: Callable[[Enum]], default = None) -> Enum:
         try:
             return next(enum for enum in cls if callback(enum))
         except StopIteration:
@@ -78,12 +78,20 @@ class SortDirection(Enum):
 
 # Abstract enum for sort columns
 class SortColumn(Enum):
-    pass
+    # Get the default sort direction
+    @property
+    def direction(self):
+        pass
 
 # Enum for columns used to sort tasks
 class TaskSortColumn(SortColumn):
     DUE_DATE = 'DueDate'
     SET_DATE = 'SetDate'
+
+    # Get the default sort direction
+    @property
+    def direction(self):
+        return SortDirection
 
 # Enum for the timetable period
 class TimetablePeriod(Enum):
