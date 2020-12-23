@@ -2,9 +2,9 @@
 # Unauthorized reproduction is prohibited.
 
 from datetime import date as Date
-from .enums import SortColumn, SortDirection, TaskCompletionStatus
+from .enums import SortColumn, TaskSortColumn, SortDirection, TaskCompletionStatus
 
-# Encapsulates the sort column and direction
+# Defines how to sort results
 class Sort():
     # Create an instance
     def __init__(self, column: SortColumn, direction: SortDirection = None):
@@ -12,19 +12,28 @@ class Sort():
         self._direction: SortDirection = direction
 
     # Get the direction
-    def direction(self, completion_status: TaskCompletionStatus = TaskCompletionStatus.ALL):
+    def direction(self) -> SortDirection:
+        return self._direction or SortDirection.DESCENDING
+
+# Sort for the task endpoint
+class TaskSort(Sort):
+    # Create an instance
+    def __init__(self, column: TaskSortColumn, direction: SortDirection = None):
+        super().__init__(column, direction)
+
+    # Get the direction
+    def direction(self, completion_status: TaskCompletionStatus = TaskCompletionStatus.ALL) -> SortDirection:
         if self._direction:
             return self._direction
 
         # Default to ascending if the user wants only uncompleted tasks, so they know what to prioritise
-        if completion_status == TaskCompletionStatus.TO_DO:
+        if self.column == TaskSortColumn.DUE_DATE and completion_status == TaskCompletionStatus.TO_DO:
             return SortDirection.ASCENDING
 
-        # Else, default to descending as most users won't want to trawl through old homework archives
-        return SortDirection.DESCENDING
+        return super().direction()
 
-# Encapsulates 2 dates
-class DateRange():
+# Period of time between two dates
+class DatePeriod():
     # Create an instance
     def __init__(self, from_date: Date, until_date: Date = None):
         self.from_date: Date = from_date
