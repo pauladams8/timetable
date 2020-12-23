@@ -10,17 +10,15 @@ from http import HTTPStatus
 from bs4 import BeautifulSoup
 from .events import TaskEvent
 from yaspin import yaspin as Yaspin
-from .filters import Sort, DateRange
 from requests import Session, Response
 from dateutil import parser as dateutil
+from .filters import TaskSort, DatePeriod
 from typing import List, Dict, Callable, Type
+from .errors import AuthenticationError, InputError
 from datetime import date as Date, time as Time, datetime as DateTime
 from .resources import User, Teacher, Lesson, Addressee, Class, Student, Task
 from .enums import (TaskCompletionStatus, TaskReadStatus, TaskMarkingStatus, SortDirection,
                     TaskSortColumn, FilterEnum, TimetablePeriod, TaskOwner, TaskEventEnum, Recipient)
-
-# Type hint the HTML parser
-Response.parser: BeautifulSoup
 
 # Maintains Firefly session state
 class Client():
@@ -34,11 +32,10 @@ class Client():
         self.username: str = username
         self.password: str = password
         self.spinner: Yaspin = Yaspin()
+        self.spinner.color = 'green'
         self._client: Session = Session()
-        self._client.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.102 Safari/537.36',
-            'Accept': self.MIME_TYPE_HTML # Can be overriden on a method basis
-        })
+        self._client.headers['User-Agent'] = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.102 Safari/537.36'
+        self._client.headers['Accept'] = self.MIME_TYPE_HTML # Can be overriden on a method basis
         self._attempts: int = 0
         self._user: User = None
         self._cookie_path = storage_path.joinpath('cookies')
@@ -61,7 +58,7 @@ class Client():
         # Determine if we need to login
         if response.status_code == HTTPStatus.UNAUTHORIZED or response.url != url and 'login.aspx' in response.url:
             if self._attempts > 1:
-                raise Exception('Unable to authenticate with Firefly')
+                raise AuthenticationError('Unable to authenticate with Firefly, check your credentials')
 
             self.login()
 
@@ -99,7 +96,6 @@ class Client():
 
         indicator: str = ' '.join(['timetable for', ('week beginning ' if period == TimetablePeriod.WEEK else '') + str(day) + suffix, from_date.strftime('%B')])
 
-        self.spinner.color = 'green'
         self.spinner.text = 'Retrieving ' + indicator
 
         response: Response = self._get('/planner/%s/%s' % (period.foreign_name, from_date.strftime('%Y-%m-%d')))
@@ -114,14 +110,14 @@ class Client():
 
         lessons: List = []
 
+        # Parse an ISO 8601 compatible time string
+        def parse_time(iso_time: str) -> DateTime:
+            if not iso_time:
+                return iso_time
+
+            return dateutil.isoparse(iso_time)
+
         for lesson in planner_status['events']:
-            # Parse an ISO 8601 compatible time string
-            def parse_time(iso_time: str) -> DateTime:
-                if not iso_time:
-                    return iso_time
-
-                return dateutil.isoparse(iso_time)
-
             start: DateTime = parse_time(lesson.get('isostartdate'))
             end: DateTime = parse_time(lesson.get('isoenddate'))
             subject: str = lesson.get('subject')
@@ -179,54 +175,62 @@ class Client():
                 lessons.append(p4)
 
         self.spinner.text = 'Retrieved ' + indicator
-        self.spinner.ok('✔')
 
         return lessons
 
     # Search the staff directory by surname.
-    def get_teachers(self, surname: str) -> List[Teacher]:
+    def search_directory(self, surname: str) -> List[Teacher]:
+        self.spinner.text = 'Searching the school directory'
+
         response = self._get('/school-directory', params={
             'name': surname
         })
 
         teachers = []
 
-        i: int = 0
+        table = response.parser.select_one('#StaffResults > table')
 
-        for row in response.parser.select_one('#StaffResults > table').find_all('tr'):
+        if not table:
+            return []
+
+        for i, row in enumerate(table.find_all('tr')):
             # Ignore table header
             if i != 0:
                 cells = row.find_all('td')
+
+                phone_number: str = cells[4].find(text=True)
+                email_address: str = cells[4].find('a').text
 
                 teachers.append(
                     Teacher(
                         name=cells[1].find('h3').text,
                         picture=cells[0].find('img')['src'],
-                        roles=[role.strip() for role in cells[2].find_all(text=True)],
-                        departments=[department.strip() for department in cells[3].text.split(', ')],
-                        phone_number=cells[4].find(text=True).strip(),
-                        email_address=cells[4].find('a').text
+                        roles=[role.strip() for role in cells[2].find_all(text=True) if role],
+                        departments=[department.strip() for department in cells[3].text.split(', ') if department],
+                        phone_number=phone_number.strip() if phone_number else phone_number,
+                        email_address=email_address.strip() if email_address else email_address
                     )
                 )
-
-            i += 1
 
         return teachers
 
     # Get the first search result from the staff directory
     def get_teacher(self, surname: str) -> Teacher:
-        return self.get_teachers(surname)[0]
+        try:
+            return self.search_directory(surname)[0]
+        except IndexError:
+            return None
 
     # Get the user's set tasks
     def get_tasks(
         self,
-        completion_status: TaskCompletionStatus.TO_DO,
-        read_status: TaskReadStatus.ALL,
+        completion_status: TaskCompletionStatus = TaskCompletionStatus.ALL,
+        read_status: TaskReadStatus = TaskReadStatus.ALL,
         marking_status: TaskMarkingStatus = TaskMarkingStatus.ALL,
-        due_date: DateRange = None,
+        due: DatePeriod = None,
         setters: List[User] = None,
         addressees: List[Addressee] = None,
-        sort: Sort = Sort(TaskSortColumn.DUE_DATE),
+        sort: TaskSort = TaskSort(TaskSortColumn.DUE_DATE),
         offset: int = 0,
         limit: int = 10
     ) -> (List[Task], int):
@@ -248,11 +252,11 @@ class Client():
             ]
         }
 
-        date_filter: Callable[[Date], str] = lambda date: date.strftime('%Y-%m-%d')
+        date_filter: Callable[[Date], [str]] = lambda date: date.strftime('%Y-%m-%d')
 
-        if due_date:
-            params['dueDateFrom'] = date_filter(due_date.from_date)
-            params['dueDateTo'] = date_filter(due_date.until_date)
+        if due:
+            params['dueDateFrom'] = date_filter(due.from_date)
+            params['dueDateTo'] = date_filter(due.until_date)
         if setters:
             params['owners'] = [setter.guid for setter in setters]
         if addressees:
@@ -280,7 +284,7 @@ class Client():
             return time.date()
 
         # Create a User instance
-        def create_user(user_dict: Dict, user_cls: str = User) -> User:
+        def create_user(user_dict: Dict, user_cls: Type[User] = User) -> User:
             return user_cls(
                 guid=user_dict.get('guid'),
                 name=user_dict.get('name'),
@@ -292,7 +296,7 @@ class Client():
             addressees: List = []
 
             for addressee_dict in task_dict['addressees']:
-                addressee_cls: str = Class if addressee_dict.get('isGroup') else Student
+                addressee_cls: Type[Addressee] = Class if addressee_dict.get('isGroup') else Student
 
                 addressees.append(
                     addressee_cls(
@@ -312,8 +316,8 @@ class Client():
                     title=task_dict.get('title'),
                     addressees=addressees,
                     setter=create_user(task_dict.get('setter'), Student if task_dict.get('isPersonalTask') else User),
-                    set=parse_date(task_dict.get('setDate')),
-                    due=parse_date(task_dict.get('dueDate')),
+                    set_date=parse_date(task_dict.get('setDate')),
+                    due_date=parse_date(task_dict.get('dueDate')),
                     is_done=task_dict.get('isDone'),
                     is_read=task_dict.get('isUnread'),
                     is_archived=task_dict.get('archived'),
@@ -328,7 +332,6 @@ class Client():
             )
 
         self.spinner.text = 'Retrieved tasks'
-        self.spinner.ok('✔️')
 
         return tasks, body.get('totalCount')
 
@@ -354,7 +357,7 @@ class Client():
         })
 
         if response.status_code == HTTPStatus.FORBIDDEN:
-                raise Exception("Can't mark the task as %s as it's already marked as %s" % (
+                raise InputError("Can't mark the task as %s as it's already marked as %s" % (
                         event_type.human_name, event_type.human_name
                     )
                 )
@@ -394,7 +397,7 @@ class Client():
 
             user_data: Dict = json.loads(json_str)['page']['user']
 
-            user_cls: str = Student if user_data.get('@role') == 'student' else User
+            user_cls: Type[User] = Student if user_data.get('@role') == 'student' else User
 
             self._user = user_cls(
                 guid=user_data['@guid'],
@@ -422,7 +425,7 @@ class Client():
         if not self._cookie_path.is_file():
             self._cookie_path.touch()
 
-        cookie_file = self._cookie_path.open('wb+')
+        cookie_file = self._cookie_path.open('wb')
 
         pickle.dump(self._client.cookies, cookie_file)
 
