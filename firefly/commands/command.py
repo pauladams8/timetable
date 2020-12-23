@@ -42,8 +42,7 @@ class Command():
             for command in subcommands:
                 subparser: ArgumentsParser = subparsers.add_parser(
                     name=command.name,
-                    description=command.description,
-                    prog=parser.prog
+                    description=command.description
                 )
                 command(parser=subparser, parent=self)
 
