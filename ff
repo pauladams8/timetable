@@ -3,40 +3,75 @@
 # Copyright Paul Adams, 2020. All rights reserved.
 # Unauthorised reproduction is prohibited.
 
+# Import the bare minimum needed for error handling
+import os
 import sys
-import config
-from typing import Dict
-from datetime import date as Date
-from colorama import init as colorinit
-from commands import Command, tasks, timetable
-from argparse import ArgumentParser as ArgumentsParser, Namespace as Arguments
+import traceback
+import sentry_sdk
+from urllib.parse import urlencode
+from firefly import FireflyError, config, fmt
 
-# Create the storage directory if it doesn't exist
-if not config.PATH.is_dir():
-    config.PATH.mkdir()
+if not config.debug_mode():
+    # Init the Sentry SDK
+    sentry_sdk.init(
+        config.SENTRY_DSN,
+        sample_rate=1.0,
+        request_bodies='always',
+        send_default_pii=True,
+    )
 
-# Init colourful output
-colorinit()
-
-# Create the root parser
-parser: ArgumentsParser = ArgumentsParser(
-    description='Retrieve your timetable, tasks and more from Firefly',
-    epilog='Copyright %s, %d. All rights reserved.' % (config.AUTHOR, Date.today().year)
-)
-
-# Create the root command instance
-cmd: Command = Command(
-    parser=parser,
-    subcommands=[
-        tasks.GetTasks,
-        timetable.GetTimetable
-    ]
-)
+# Terminate the script with a warning
+def warn(e: str):
+    sys.exit(fmt.warn(e))
 
 try:
+    # Import everything else
+    from datetime import date as Date
+    from colorama import init as colorinit
+    from firefly.commands import Command, tasks, timetable, teachers
+    from argparse import ArgumentParser as ArgumentsParser, Namespace as Arguments
+
+    # Init colourful output
+    colorinit()
+
+    # Create the root parser
+    parser: ArgumentsParser = ArgumentsParser(
+        description='Retrieve your timetable, tasks and more from Firefly',
+        epilog='Copyright %s, %d. All rights reserved.' % (config.AUTHOR, Date.today().year)
+    )
+
+    # Create the root command instance
+    cmd: Command = Command(
+        parser=parser,
+        subcommands=[
+            tasks.GetTasks,
+            teachers.GetTeachers,
+            timetable.GetTimetable
+        ]
+    )
+
     # Parse the arguments
-    args: Arguments = cmd.parser.parse_args()
+    args: Arguments = cmd.parse_arguments()
     # Execute the command 
     args.func(args)
+except FireflyError as e:
+    # This is the user's problem, let them deal with it
+    warn(str(e))
+except KeyboardInterrupt:
+    # Exit the program gracefully
+    print('\n👋 Goodbye', flush=True)
 except Exception as e:
-    sys.exit(e)
+    if config.debug_mode():
+        # Don't handle the error
+        raise
+    else:
+        # This is our problem, so we'll report the error to Sentry...
+        eid: str = sentry_sdk.capture_exception(e)
+        # Disable Sentry output
+        sentry_sdk.flush()
+        # ...and tell the user to file an issue on GitHub
+        warn('Something went wrong. The error has been automatically reported to the developer. If you want to chat about it, please file an issue on GitHub: ' + config.REPO_URL + '/issues/new?' + urlencode({
+            'title': fmt.human_cls(e.__class__),
+            'body': '> %s\n\nRef: `%s`' % (str(e), eid),
+            'labels': ','.join(['bug'])
+        }))
