@@ -34,10 +34,7 @@ class Enum(AutoNumberEnum):
     # Filter the enum by a callback
     @classmethod
     def filter(cls, callback: Callable[[Enum]], default = None) -> Enum:
-        try:
-            return next(enum for enum in cls if callback(enum))
-        except StopIteration:
-            return default
+        return next((enum for enum in cls if callback(enum)), default)
 
     # Get an enum by its human readable name
     @classmethod

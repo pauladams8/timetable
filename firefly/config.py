@@ -55,5 +55,5 @@ def get(section: str, key: str, default = _UNSET, can_ask: bool = True):
 
 # Write any changes to the config file
 def commit():
-    with open(CONFIG_PATH, 'w+') as f:
+    with open(CONFIG_PATH, 'w') as f:
         Parser.write(f)

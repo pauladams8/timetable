@@ -52,7 +52,7 @@ class Command():
 
     # Register the command arguments
     def register_arguments(self):
-        self.parser.add_argument('-n', '--no-interaction', type=bool, default=False, metavar='', help='Prevents %(prog)s from reading stdin. Defaults to false. %(prog)s may prompt for config on its first run unless specified in the config file.')
+        self.parser.add_argument('-n', '--no-interaction', action='store_true', default=False, help='Prevents %(prog)s from reading stdin, for example. Defaults to false. A config file must be present with this option.')
 
     # Parse the command arguments
     def parse_arguments(self) -> Arguments:
