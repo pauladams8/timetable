@@ -28,7 +28,7 @@ try:
     # Import everything else
     from datetime import date as Date
     from colorama import init as colorinit
-    from firefly.commands import Command, tasks, timetable, teachers
+    from firefly.commands import Command, auth, tasks, timetable, teachers
     from argparse import ArgumentParser as ArgumentsParser, Namespace as Arguments
 
     # Init colourful output
@@ -44,6 +44,7 @@ try:
     cmd: Command = Command(
         parser=parser,
         subcommands=[
+            auth.Auth,
             tasks.GetTasks,
             teachers.GetTeachers,
             timetable.GetTimetable
