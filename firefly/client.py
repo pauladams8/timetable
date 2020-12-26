@@ -7,14 +7,15 @@ import pickle
 from pathlib import Path
 from .times import BREAK
 from http import HTTPStatus
-from bs4 import BeautifulSoup
 from .events import TaskEvent
 from yaspin import yaspin as Yaspin
-from requests import Session, Response
 from dateutil import parser as dateutil
 from .filters import TaskSort, DatePeriod
 from typing import List, Dict, Callable, Type
-from .errors import AuthenticationError, InputError
+from bs4 import BeautifulSoup, Tag as Element
+from urllib.parse import urljoin, urlparse, ParseResult as URL
+from .errors import AuthenticationError, InputError, FireflyError
+from requests import Session, PreparedRequest as Request, Response
 from datetime import date as Date, time as Time, datetime as DateTime
 from .resources import User, Teacher, Lesson, Addressee, Class, Student, Task
 from .enums import (TaskCompletionStatus, TaskReadStatus, TaskMarkingStatus, SortDirection,
@@ -36,8 +37,9 @@ class Client():
         self._client: Session = Session()
         self._client.headers['User-Agent'] = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.102 Safari/537.36'
         self._client.headers['Accept'] = self.MIME_TYPE_HTML # Can be overriden on a method basis
-        self._attempts: int = 0
+        self._has_authenticated: bool = False
         self._user: User = None
+        self._storage_path = storage_path
         self._cookie_path = storage_path.joinpath('cookies')
 
         if self._cookie_path.is_file():
@@ -46,34 +48,52 @@ class Client():
 
     # Append an endpoint to the base url
     def _url(self, endpoint: str) -> str:
-        return self.base_url + endpoint
+        return endpoint if self._is_url(endpoint) else self.base_url + endpoint
+
+    # Determine if a URL is valid
+    def _is_url(self, url: str) -> bool:
+        try:
+            url: URL = urlparse(url)
+            return url.scheme and url.netloc
+        except:
+            return False
 
     # Make a request to Firefly and check if we're authenticated.
     # If we're not, attempt to login.
-    def _request(self, method: str, endpoint: str, **kwargs) -> Response:
+    def _request(self, method: str, endpoint: str, should_login: bool = True, **kwargs) -> Response:
         url: str = self._url(endpoint)
 
         response: Response = self._client.request(method, url, **kwargs)
+        request: Request = (response.history[0] if response.history else response).request
 
-        # Determine if we need to login
-        if response.status_code == HTTPStatus.UNAUTHORIZED or response.url != url and 'login.aspx' in response.url:
-            if self._attempts > 1:
-                raise AuthenticationError('Unable to authenticate with Firefly, check your credentials')
+        if response.status_code >= 500:
+            raise FireflyError('Server is down')
 
-            self.login()
-
-            self._attempts += 1
-
-            # Try again
-            return self._request(method, endpoint, **kwargs)
-
-        expected_type: str = response.request.headers.get('Accept')
-
-        if expected_type == self.MIME_TYPE_HTML:
+        if request.headers.get('accept') == self.MIME_TYPE_HTML:
             # Create a parser instance on the response for parsing HTML
             response.parser: BeautifulSoup = BeautifulSoup(response.text, 'lxml')
 
+        if self._is_unauthenticated(response):
+            if should_login:
+                # The endpoint requires authentication.
+                response: Response = self.login(login_page=response if self._is_login_page(response) else None)
+
+                # Try again, unless the login request has already redirected us back to the URL we want
+                return response if response.url == request.url else self._request(method, endpoint, **kwargs)
+
+            if self._has_authenticated:
+                # We think we've authenticated, but the server says we haven't
+                raise AuthenticationError('Unable to authenticate with Firefly, check your credentials')
+
         return response
+
+    # Determine if the server says we're unauthenticated
+    def _is_unauthenticated(self, response: Response) -> bool:
+        return response.status_code == HTTPStatus.UNAUTHORIZED or self._is_login_page(response)
+
+    # Determine if the response is the login page
+    def _is_login_page(self, response: Response) -> bool:
+        return 'login.aspx' in response.url
 
     # Make a GET request
     def _get(self, endpoint: str, **kwargs) -> Response:
@@ -86,7 +106,6 @@ class Client():
     # Get the lessons for a given day
     def get_lessons(self, from_date: Date, period: TimetablePeriod = TimetablePeriod.DAY) -> List[Lesson]:
         day: int = from_date.day
-        suffix: str
 
         # https://stackoverflow.com/questions/739241/date-ordinal-output
         if 4 <= day <= 20 or 24 <= day <= 30:
@@ -188,7 +207,7 @@ class Client():
 
         teachers = []
 
-        table = response.parser.select_one('#StaffResults > table')
+        table: Element = response.parser.select_one('#StaffResults > table')
 
         if not table:
             return []
@@ -406,27 +425,53 @@ class Client():
 
         return self._user
 
-    # Request a session cookie from Firefly and save it to a file so we don't have to login again until it expires
-    def login(self):
+    # Request a session cookie from Firefly
+    def login(self, login_page: Response = None) -> Response:
         old_spinner_text: str = self.spinner.text
         self.spinner.text = 'Logging in'
 
-        response = self._get('/login/login.aspx')
+        login_page = login_page or self._get('/login/login.aspx', should_login=False)
 
-        form = response.parser.select_one('body > div.ff-login-box > div.ff-login-mainsection > form')
+        form: Element = login_page.parser.select_one('body > div.ff-login-box > div.ff-login-mainsection > form')
 
-        self._post('/login/' + form['action'], data={
+        response: Response = self._post(urljoin(login_page.url, form['action']), data={
             'username': self.username,
             'password': self.password
         }, headers={
-            'Referer': response.url
-        })
+            'Referer': login_page.url
+        }, should_login=False)
 
+        if response.status_code >= 400:
+            raise AuthenticationError('Failed to login, check your credentials')
+
+        if error := response.parser.select_one('.ff-login-error-message'):
+            raise AuthenticationError(error.text)
+
+        self._save_state()
+
+        self._has_authenticated = True
+        self.spinner.text = old_spinner_text or 'Logged in'
+
+        return response
+
+    # Logout from Firefly
+    def logout(self):
+        self.spinner.text = 'Logging out'
+
+        self._get('/logout', headers={
+            'Referer': self._url('/pupil-portal')
+        }, should_login=False)
+
+        self._save_state()
+
+        self._has_authenticated = False
+        self.spinner.text = 'Logged out'
+
+    # Save the session cookie to a file so we don't have to login again until it expires
+    def _save_state(self):
         if not self._cookie_path.is_file():
             self._cookie_path.touch()
 
         cookie_file = self._cookie_path.open('wb')
 
         pickle.dump(self._client.cookies, cookie_file)
-
-        self.spinner.text = old_spinner_text
